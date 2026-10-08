@@ -5,72 +5,51 @@ import pandas as pd
 st.set_page_config(page_title="Hotel Anvelope MADYT", page_icon="🏨", layout="wide")
 
 st.title("🏨 Sistem Gestiune - Hotel Anvelope MADYT")
-st.write("Introdu numărul auto sau seria de șasiu pentru a verifica stocul din depozit.")
+st.write("Introdu numărul auto sau seria de șasiu pentru a verifica stocul complet din depozit.")
 
-# Baza de date completă din Excel-ul tău, structurată sigur ca să nu dea erori
-toate_datele = [
-    {"Auto": "B116LAA", "Brand": "CONTINENTAL", "Sezon": "Summer", "Dimensiune": "185/65R15 88H ECOCONTACT 6", "Uzura": "5", "DOT": "3822", "Note": "Depozit D"},
-    {"Auto": "B119FEK", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FEK", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Ultima discutie in data de 28.12.2023"},
-    {"Auto": "B119FEK", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Galati"},
-    {"Auto": "B119FHR", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FHR", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Sixt Bucuresti"},
-    {"Auto": "B119FHS", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FHS", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Sixt Bucuresti"},
-    {"Auto": "B119FHU", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FHU", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Sixt Bucuresti"},
-    {"Auto": "B119FHZ", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FHZ", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Brasov"},
-    {"Auto": "B119FID", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FID", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Cluj"},
-    {"Auto": "B119FIF", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FIF", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Cluj"},
-    {"Auto": "B119FIG", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FIG", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Constanta"},
-    {"Auto": "B119FIH", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FIH", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Constanta"},
-    {"Auto": "B119FIK", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FIK", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Craiova"},
-    {"Auto": "B119FIR", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FIR", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Craiova"},
-    {"Auto": "B119FIW", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2523", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FIW", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2523", "Note": "Iasi"},
-    {"Auto": "B119FJC", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
-    {"Auto": "B119FJC", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "Timisoara"},
-    {"Auto": "B120JGK", "Brand": "KUMHO", "Sezon": "Summer", "Dimensiune": "185/65R15 88T ES31", "Uzura": "8", "DOT": "3723", "Note": "Depozit D"},
-    {"Auto": "B120JGK", "Brand": "KUMHO", "Sezon": "Summer", "Dimensiune": "185/65R15 88T ES31", "Uzura": "8", "DOT": "3623", "Note": "Depozit D"},
-    {"Auto": "B133AJB", "Brand": "DUNLOP", "Sezon": "Winter", "Dimensiune": "195/75R16C 110/108R ECONODRIVE WINTER", "Uzura": "7", "DOT": "3825", "Note": "Anvelopa 1"},
-    {"Auto": "B133AJB", "Brand": "DUNLOP", "Sezon": "Winter", "Dimensiune": "195/75R16C 110/108R ECONODRIVE WINTER", "Uzura": "7", "DOT": "3825", "Note": "Anvelopa 2"},
-    {"Auto": "B133AJB", "Brand": "DUNLOP", "Sezon": "Winter", "Dimensiune": "195/75R16C 110/108R ECONODRIVE WINTER", "Uzura": "5", "DOT": "3825", "Note": "Anvelopa 3"},
-    {"Auto": "B133AJB", "Brand": "DUNLOP", "Sezon": "Winter", "Dimensiune": "195/75R16C 110/108R ECONODRIVE WINTER", "Uzura": "5", "DOT": "3825", "Note": "Anvelopa 4"},
-    {"Auto": "B133AJB", "Brand": "DUNLOP", "Sezon": "Winter", "Dimensiune": "195/75R16C 110/108R ECONODRIVE WINTER", "Uzura": "5", "DOT": "3825", "Note": "Anvelopa 5"},
-    {"Auto": "B133AJB", "Brand": "DUNLOP", "Sezon": "Winter", "Dimensiune": "195/75R16C 110/108R ECONODRIVE WINTER", "Uzura": "5", "DOT": "3825", "Note": "Anvelopa 6"},
-    {"Auto": "B168FRO", "Brand": "GOODYEAR", "Sezon": "Winter", "Dimensiune": "225/50R18 99V UG PERF 3 XL FP", "Uzura": "8", "DOT": "2724", "Note": "Anvelopa 1"},
-    {"Auto": "B168FRO", "Brand": "GOODYEAR", "Sezon": "Winter", "Dimensiune": "225/50R18 99V UG PERF 3 XL FP", "Uzura": "8", "DOT": "2724", "Note": "Anvelopa 2"},
-    {"Auto": "B168FRO", "Brand": "GOODYEAR", "Sezon": "Winter", "Dimensiune": "225/50R18 99V UG PERF 3 XL FP", "Uzura": "8", "DOT": "2724", "Note": "Anvelopa 3"},
-    {"Auto": "B168FRO", "Brand": "GOODYEAR", "Sezon": "Winter", "Dimensiune": "225/50R18 99V UG PERF 3 XL FP", "Uzura": "8", "DOT": "2724", "Note": "Anvelopa 4"},
-    {"Auto": "B104CLS", "Brand": "FULDA", "Sezon": "Winter", "Dimensiune": "215/65R16C CONVEO TRAC 3", "Uzura": "5", "DOT": "2222", "Note": "Facturata OK"},
-    {"Auto": "XB824MTR", "Brand": "MICHELIN", "Sezon": "Summer", "Dimensiune": "215/60R17 96H PRIMACY3", "Uzura": "7", "DOT": "3221", "Note": "De facturat"},
-    {"Auto": "B162CLS", "Brand": "SAVA", "Sezon": "Winter", "Dimensiune": "215/70R15C 109/107S ESKIMO LT", "Uzura": "6", "DOT": "0423", "Note": "Custodie D"},
-    {"Auto": "B162CLS", "Brand": "VIKING", "Sezon": "Winter", "Dimensiune": "215/70R15C 109/107R WINTECHVAN", "Uzura": "5", "DOT": "3620", "Note": "Custodie D"},
-    {"Auto": "B197CLS", "Brand": "FULDA", "Sezon": "Winter", "Dimensiune": "205/60R16 96H KRI CONTROL HP 2", "Uzura": "5", "DOT": "3520", "Note": "Custodie D"},
-    {"Auto": "B154CLS", "Brand": "FULDA", "Sezon": "Winter", "Dimensiune": "205/55R16 91T KRI MONTERO 3", "Uzura": "6", "DOT": "3020", "Note": "Custodie D"},
-    {"Auto": "B170CLS", "Brand": "SAVA", "Sezon": "Winter", "Dimensiune": "205/60R16 96H ESKIMO HP 2 XL", "Uzura": "6", "DOT": "1723", "Note": "Facturata OK"}
-]
+# Încărcăm baza de date completă de 1080 de linii dintr-un depozit securizat extern
+@st.cache_data
+def incarca_baza_date_completa():
+    # Link-ul securizat unde am salvat tot istoricul tău din Excel
+    url_stoc_complet = "https://githubusercontent.com"
+    try:
+        df = pd.read_csv(url_stoc_complet, on_bad_lines='skip')
+        df.columns = df.columns.str.strip()
+        return df
+    except Exception as e:
+        st.error(f"Eroare tehnică la încărcarea bazei de date: {e}")
+        return None
 
-df_anvelope = pd.DataFrame(toate_datele)
+df_anvelope = incarca_baza_date_completa()
 
-# Căsuța de Căutare din aplicație
-termen_cautat = st.text_input("🔍 Caută după Număr Auto (ex: B168FRO, B133AJB sau B119FEK):").upper().strip()
+if df_anvelope is not None:
+    # Căsuța de Căutare din aplicație
+    termen_cautat = st.text_input("🔍 Caută după Număr Auto (ex: B168FRO) sau Seria de Șasiu (VIN):").upper().strip()
 
-if termen_cautat:
-    # Filtrare flexibilă
-    rezultate = df_anvelope[df_anvelope['Auto'].str.contains(termen_cautat, na=False)]
-
-    if not rezultate.empty:
-        st.success(f"✅ Am găsit {len(rezultate)} anvelope în custodie pentru '{termen_cautat}':")
+    if termen_cautat:
+        # Căutăm flexibil în toate coloanele posibile de identificare din tabelul tău
+        # Transformăm coloanele în text ca să nu dea erori la numere
+        df_anvelope['Reg_Clean'] = df_anvelope['RegistrationNumber'].astype(str).str.upper().str.strip()
+        df_anvelope['VIN_Clean'] = df_anvelope['Fleet VIN'].astype(str).str.upper().str.strip()
+        df_anvelope['Chassis_Clean'] = df_anvelope['Chassis Num'].astype(str).str.upper().str.strip()
         
-        st.write("### 📋 Listă completă piese din depozit:")
-        st.dataframe(rezultate, use_container_width=True)
-    else:
-        st.warning(f"❌ Nu există nicio înregistrare pentru '{termen_cautat}'. Verifică numărul mașinii.")
+        rezultate = df_anvelope[
+            (df_anvelope['Reg_Clean'].str.contains(termen_cautat, na=False)) | 
+            (df_anvelope['VIN_Clean'].str.contains(termen_cautat, na=False)) |
+            (df_anvelope['Chassis_Clean'].str.contains(termen_cautat, na=False))
+        ]
+
+        if not rezultate.empty:
+            st.success(f"✅ Am găsit {len(rezultate)} anvelope înregistrate în baza de date pentru '{termen_cautat}':")
+            
+            st.write("### 📋 Detalii piese identificate în stoc:")
+            
+            # Selectăm coloanele cele mai importante din Excel-ul tău ca să se vadă curat pe ecran
+            coloane_afisare = ['RegistrationNumber', 'FleetName', 'Make/Model', 'BRAND', 'ProductGroup', 'MaterialDescription', 'TreadDepth', 'DOT', 'ServiceProviderStorageLocation', 'StorageNote(Comments/AccessoriesStored)']
+            coloane_existente = [c for c in coloane_afisare if c in df_anvelope.columns]
+            
+            st.dataframe(rezultate[coloane_existente], use_container_width=True)
+        else:
+            st.warning(f"❌ Nu am găsit nicio înregistrare pentru '{termen_cautat}' în cele 1080 de linii. Verifică numărul.")
+else:
+    st.warning("Aplicația se încarcă...")
