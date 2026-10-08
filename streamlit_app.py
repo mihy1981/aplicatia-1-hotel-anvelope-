@@ -1,13 +1,13 @@
-import streamlit as st
-import pandas as pd
+import streamlit st
+import pandas pd
 
 # Configurare pagină interfață
 st.set_page_config(page_title="Hotel Anvelope MADYT", page_icon="🏨", layout="wide")
 
 st.title("🏨 Sistem Gestiune - Hotel Anvelope MADYT")
-st.write("Sistem conectat la baza de date completă (1080 rânduri).")
+st.write("Sistem conectat la baza de date completă.")
 
-# Încărcarea bazei de date structurate direct în memoria aplicației
+# Baza de date corectată: acum B120LLR are 4 linii separate, exact ca în Excelul tău
 stoc_complet = [
     {"Auto": "B116LAA", "Brand": "CONTINENTAL", "Sezon": "Summer", "Dimensiune": "185/65R15 88H ECOCONTACT 6", "Uzura": "5", "DOT": "3822", "Note": "Depozit D"},
     {"Auto": "B119FEK", "Brand": "BRIDGESTONE", "Sezon": "Summer", "Dimensiune": "225/65R17 102V TURANZA ECO ENLITEN", "Uzura": "6", "DOT": "2323", "Note": "NU SUNT LA NOI"},
@@ -49,7 +49,10 @@ stoc_complet = [
     {"Auto": "B168FRO", "Brand": "GOODYEAR", "Sezon": "Winter", "Dimensiune": "225/50R18 99V UG PERF 3 XL FP", "Uzura": "8", "DOT": "2724", "Note": "Anvelopa 2"},
     {"Auto": "B168FRO", "Brand": "GOODYEAR", "Sezon": "Winter", "Dimensiune": "225/50R18 99V UG PERF 3 XL FP", "Uzura": "8", "DOT": "2724", "Note": "Anvelopa 3"},
     {"Auto": "B168FRO", "Brand": "GOODYEAR", "Sezon": "Winter", "Dimensiune": "225/50R18 99V UG PERF 3 XL FP", "Uzura": "8", "DOT": "2724", "Note": "Anvelopa 4"},
-    {"Auto": "B120LLR", "Brand": "MICHELIN", "Sezon": "Summer", "Dimensiune": "205/55R16 91V ENERGY SAVER+", "Uzura": "6", "DOT": "1421", "Note": "Stoc Depozit Central 4 buc"},
+    {"Auto": "B120LLR", "Brand": "MICHELIN", "Sezon": "Summer", "Dimensiune": "205/55R16 91V ENERGY SAVER+", "Uzura": "6", "DOT": "1421", "Note": "Anvelopa 1"},
+    {"Auto": "B120LLR", "Brand": "MICHELIN", "Sezon": "Summer", "Dimensiune": "205/55R16 91V ENERGY SAVER+", "Uzura": "6", "DOT": "1421", "Note": "Anvelopa 2"},
+    {"Auto": "B120LLR", "Brand": "MICHELIN", "Sezon": "Summer", "Dimensiune": "205/55R16 91V ENERGY SAVER+", "Uzura": "6", "DOT": "1421", "Note": "Anvelopa 3"},
+    {"Auto": "B120LLR", "Brand": "MICHELIN", "Sezon": "Summer", "Dimensiune": "205/55R16 91V ENERGY SAVER+", "Uzura": "6", "DOT": "1421", "Note": "Anvelopa 4"},
     {"Auto": "B104CLS", "Brand": "FULDA", "Sezon": "Winter", "Dimensiune": "215/65R16C CONVEO TRAC 3", "Uzura": "5", "DOT": "2222", "Note": "Facturata OK"},
     {"Auto": "XB824MTR", "Brand": "MICHELIN", "Sezon": "Summer", "Dimensiune": "215/60R17 96H PRIMACY3", "Uzura": "7", "DOT": "3221", "Note": "De facturat"},
     {"Auto": "B162CLS", "Brand": "SAVA", "Sezon": "Winter", "Dimensiune": "215/70R15C 109/107S ESKIMO LT", "Uzura": "6", "DOT": "0423", "Note": "Custodie D"},
@@ -62,7 +65,7 @@ stoc_complet = [
 df_anvelope = pd.DataFrame(stoc_complet)
 
 # Căsuța de Căutare din aplicație
-termen_cautat = st.text_input("🔍 Caută după Număr Auto (ex: B133AJB, B168FRO, B120LLR):").upper().strip()
+termen_cautat = st.text_input("🔍 Caută după Număr Auto (ex: B120LLR, B133AJB, B168FRO):").upper().strip()
 
 if termen_cautat:
     # Căutare flexibilă în coloana Auto
