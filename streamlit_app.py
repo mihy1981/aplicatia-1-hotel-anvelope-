@@ -1,5 +1,5 @@
-import streamlit st
-import pandas pd
+import streamlit as st
+import pandas as pd
 
 # Configurare pagină interfață
 st.set_page_config(page_title="Hotel Anvelope MADYT", page_icon="🏨", layout="wide")
