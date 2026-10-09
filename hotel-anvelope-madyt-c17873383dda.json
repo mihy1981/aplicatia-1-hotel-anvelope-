@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "hotel-anvelope-madyt",
+  "private_key_id": "c17873383dda5aef626e6f523a27ab91a8186f8c",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQD0G/eeCwzIwRwT\nzBlRCB3+DdyM7S3fBeJgmMO37PAFesSDijIQXJ8r6HfgbVWgKNUjTTMY4Mp8GTI3\nicbYffWKMZSPf1g/Bi4pNSltLeVGB7XJPzdvWDEHEw1c7BeRojbFkDZRu03DW13K\nZWqlDydqQqZZHadH0YKJTLxuwEXqPtrhCFf2DcLuAyCtNHr6zCBkR5YyxE0dmkMc\niu2g03BfhatDuwi+QT9IpxxpwgCWYgVrFUFUNyInT4vp7H/1XsgzB042KhtOcUIO\n6Fx9c1fbHt/Zwx1TO1Qkb2nimqB8tIgYGcP7H/h1DBAPxVdWyunVXNCMWg2BO/59\nF2OiOGJvAgMBAAECggEAeA9dTSzwH7jiv1Xtya3tWmuk4ucwXXV+brYT5N0y++7y\nwiNxFh0H6EeQ1h/QMlKC6bbpf73nuPuHeEtaMlZZMpvKDn26gFzgzUGpW1psXnIi\nVZWzBR9iFbGoK+CuguE+gRK5tJ8j0waX7ZjNx9rZLukS+dec07TWuAK21t3YRSmo\n9qRC6w/Gn504nKVKgIpOJw3/KO+mB+ymvUY8Uj7RXfL7BewbJ4fVCjQlDkQtdF0Y\n9bUzzvwk2kZORXlcB8DKqj5aMp4BHaqSBoJhczcXiFcmo1MK7jSnpmB/Ird4MFMs\nHM3Fbr0G9KWkTWr2VDnKwLnu/w+S3ayqE2U7VK/tiQKBgQD/Q/hxQu8LJWGYSK0o\nVIpAPi4kaL7REuj/mvYt/TRbto3iar78glAyPUgWuEL5rnJJoS0GjFZikwLFsVWG\nmUdvRCgYPTikgH/WSMvYwjXAuvzEKEO4fXHSbU91eI9DNSiVzQQAFXM6ZNUs6lJD\nNeIZAXkcDHm3U2iqMK5k12jKJQKBgQD0z8durtdyhl7la58qALRNBnLbEjOOrXAf\n6vtXQFniNpT9+0MO4bwKVfp8+Tpgh3NZQHFY2zWkvUe+GRQA74f0xCKMitbcJChm\nLpRYrBMeG3MqiJL8Nf5zSsbMv9S3DS1BpMrytlPtdPTC3GMsJvHMaml4JaIBzq6Z\nRpgSGay0AwKBgD7vZSuXkxQubTd8g6Sz4zofmoTDhnhJr0SF0jhYezY5dhXit5/O\nCTO5xDJFz817YxYgNNeudgXrtP1E0Y9T7zbRmQkQ3ww/2kTcwdV5XINeFr/OJZQw\n6YU2CicuSDQLwSvd1iSnJTe6cIyYYRvNByefI1r1AHVgjSeYxQZ7zYw5AoGBAJJW\nTYlM/D5aMgmDjo3mA+DzFN78/1KvPBHoPbvHHLOLGv7DHi+cIfIvuN7Rf+LJtNrK\nGbcaufMyrdrlVL7GcAeQ4nIOYCcRehCykTx8B6V8lRf8sZgPkn1KWpFzreyJ9N6D\nakkxUfPkcJa2dJWk5e7iQQ9vt2rLKDU5LJfNPx4PAoGAfmS6+hi9jD/NvSLcxnaO\nzGrwc1Gj1+7h6Zs3qkiuCl8f7vTIRHTTQNrhmPTvIb4CFQsNVHYifiGYH2vPAPuK\nw/kvdKr6sjqIYNmnvC/ZeQzBqbjgIHaOvnFN4QprMNHyjg2fuzeX3rSrYGFi66dG\nD+qQ+JNGUwkLec6fdMmvVbg=\n-----END PRIVATE KEY-----\n",
+  "client_email": "madyt-hotel@hotel-anvelope-madyt.iam.gserviceaccount.com",
+  "client_id": "105244728434298408950",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/madyt-hotel%40hotel-anvelope-madyt.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
