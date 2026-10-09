@@ -37,22 +37,39 @@ if termen_cautat:
             st.success(f"✅ Am găsit {len(rezultate)} poziții în stoc pentru '{termen_cautat}':")
             st.write("### 📋 Detalii piese identificate în depozit:")
             
-            # Structura coloanelor mapate exact după specificațiile tale (N, Q, R, U)
-            coloane_solicitate = {
-                'RegistrationNumber': 'Număr Auto',
-                'FleetName': 'Nume Client / Companie',
-                'Make/Model': 'Model Mașină',
-                'MaterialDescription': 'Descriere Material (Coloana N)',
-                'TreadDepth': 'Adâncime Profil / Uzură (Coloana Q)',
-                'DOT': 'DOT (Coloana R)',
-                'StorageNote(Comments/AccessoriesStored)': 'Observații Depozitare (Coloana U)'
+            # Definirea coloanelor tehnice din Excel în ordinea exactă solicitată: D, B, F, G, N, P, Q, R, U
+            ordine_coloane = [
+                'RegistrationNumber',                      # Coloana D
+                'FleetName',                               # Coloana B
+                'Chassis Num',                             # Coloana F
+                'Make/Model',                              # Coloana G
+                'MaterialDescription',                     # Coloana N
+                'StorageDate',                             # Coloana P
+                'TreadDepth',                              # Coloana Q
+                'DOT',                                     # Coloana R
+                'StorageNote(Comments/AccessoriesStored)'  # Coloana U
+            ]
+            
+            # Dicționar pentru redenumirea lor pe ecran într-un mod prietenos
+            nume_coloane_ecran = {
+                'RegistrationNumber': 'Număr Auto (D)',
+                'FleetName': 'Nume Client / Companie (B)',
+                'Chassis Num': 'Serie Șasiu (F)',
+                'Make/Model': 'Model Mașină (G)',
+                'MaterialDescription': 'Descriere Material (N)',
+                'StorageDate': 'Dată Depozitare (P)',
+                'TreadDepth': 'Adâncime Profil / Uzură (Q)',
+                'DOT': 'DOT (R)',
+                'StorageNote(Comments/AccessoriesStored)': 'Observații Depozitare (U)'
             }
             
-            # Afișăm doar coloanele care există efectiv în fișierul încărcat
-            coloane_existente = [c for c in coloane_solicitate.keys() if c in rezultate.columns]
-            tabel_filtrat = rezultate[coloane_existente].rename(columns=coloane_solicitate)
+            # Păstrăm doar coloanele care există în fișier pentru a preveni erorile de sistem
+            cols_valide = [c for c in ordine_coloane if c in rezultate.columns]
             
-            st.dataframe(tabel_filtrat, use_container_width=True)
+            # Filtrăm și ordonăm tabelul final exact după lista definită mai sus
+            tabel_ordonat = rezultate[cols_valide].rename(columns=nume_coloane_ecran)
+            
+            st.dataframe(tabel_ordonat, use_container_width=True)
         else:
             st.warning(f"❌ Nu am găsit nicio înregistrare în fișier pentru '{termen_cautat}'.")
     else:
