@@ -36,7 +36,23 @@ if termen_cautat:
         if not rezultate.empty:
             st.success(f"✅ Am găsit {len(rezultate)} poziții în stoc pentru '{termen_cautat}':")
             st.write("### 📋 Detalii piese identificate în depozit:")
-            st.dataframe(rezultate, use_container_width=True)
+            
+            # Structura coloanelor mapate exact după specificațiile tale (N, Q, R, U)
+            coloane_solicitate = {
+                'RegistrationNumber': 'Număr Auto',
+                'FleetName': 'Nume Client / Companie',
+                'Make/Model': 'Model Mașină',
+                'MaterialDescription': 'Descriere Material (Coloana N)',
+                'TreadDepth': 'Adâncime Profil / Uzură (Coloana Q)',
+                'DOT': 'DOT (Coloana R)',
+                'StorageNote(Comments/AccessoriesStored)': 'Observații Depozitare (Coloana U)'
+            }
+            
+            # Afișăm doar coloanele care există efectiv în fișierul încărcat
+            coloane_existente = [c for c in coloane_solicitate.keys() if c in rezultate.columns]
+            tabel_filtrat = rezultate[coloane_existente].rename(columns=coloane_solicitate)
+            
+            st.dataframe(tabel_filtrat, use_container_width=True)
         else:
             st.warning(f"❌ Nu am găsit nicio înregistrare în fișier pentru '{termen_cautat}'.")
     else:
