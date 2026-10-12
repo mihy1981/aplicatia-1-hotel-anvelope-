@@ -1,3 +1,3 @@
 openpyxl
-gspread
-google-auth
+st-theme
+st-gsheets-connection
