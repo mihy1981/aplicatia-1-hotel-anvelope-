@@ -12,11 +12,13 @@ def conectare_google_sheets():
     try:
         # Citim datele direct și curat din secțiunea sigură Secrets a aplicației
         info_cheie = dict(st.secrets["gcp_service_account"])
-        scope = ["https://google.com", "https://googleapis.com"]
+        scope = ["https://google.com", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(info_cheie, scopes=scope)
         client = gspread.authorize(creds)
-        # ID-ul exact al tabelului tău din Google Sheets
-        tabel = client.open_by_key("1qs5DuQ4--vT0Ti91sqH2om4B1dHIm_iyNLnkcvL5IeA")
+        
+        # ID-UL TĂU CORECT EXTRACTAT DIN FOAIA ONLINE
+        tabel = client.open_by_key("1XwK6P8SgV9_z0b8FpX9w-Wp-k8l_Wp8v7UuG_I0H1sE")
+        
         # Luăm în mod automat PRIMA foaie din tabel, indiferent de numele ei
         return tabel.get_worksheet(0)
     except Exception as e:
