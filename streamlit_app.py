@@ -17,7 +17,8 @@ def conectare_google_sheets():
         client = gspread.authorize(creds)
         # ID-ul exact al tabelului tău din Google Sheets
         tabel = client.open_by_key("1qs5DuQ4--vT0Ti91sqH2om4B1dHIm_iyNLnkcvL5IeA")
-        return tabel.worksheet("Inventar GY")
+        # Luăm în mod automat PRIMA foaie din tabel, indiferent de numele ei
+        return tabel.get_worksheet(0)
     except Exception as e:
         st.error(f"❌ Eroare la conexiunea cu Google Sheets: {e}")
         return None
