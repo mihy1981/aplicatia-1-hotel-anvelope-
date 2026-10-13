@@ -8,32 +8,38 @@ from datetime import datetime
 # Configurare interfață profesională
 st.set_page_config(page_title="Gestiune MADYT Cloud", page_icon="🏨", layout="wide")
 
-# Conectare securizată la Google Sheets (FĂRĂ cache pe obiectul activ gspread)
+# Conectare securizată la Google Sheets cu reparare automată a cheii private
 def conectare_google_sheets():
     try:
+        # Preluăm dicționarul din secretele Streamlit
         info_cheie = dict(st.secrets["gcp_service_account"])
-        # SCOPE-uri complete și obligatorii cerute de gspread pentru citire + scriere
+        
+        # REPARARE CRUCIALĂ: Înlocuim '\\n' text cu caracterul real de linie nouă
+        if "private_key" in info_cheie:
+            info_cheie["private_key"] = info_cheie["private_key"].replace("\\n", "\n")
+            
+        # Folosim doar scope-urile oficiale v4 acceptate de gspread
         scope = [
-            "https://spreadsheets.google.com/feeds",
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
+            "https://googleapis.com",
+            "https://googleapis.com"
         ]
+        
         creds = Credentials.from_service_account_info(info_cheie, scopes=scope)
         client = gspread.authorize(creds)
         
-        # ID-UL TABELULUI
+        # ID-ul corect al tabelului tău
         tabel = client.open_by_key("1qs5DuQ4--vT0Ti91sqH2om4B1dHIm_iyNLnkcvL5IeA")
         return tabel.get_worksheet(0)
     except Exception as e:
+        # Afișăm eroarea exactă pe ecran pentru depanare directă
         st.error(f"❌ Eroare la conexiunea cu Google Sheets: {e}")
         return None
 
-# Încărcare date
+# Încărcare date în timp real
 ws = conectare_google_sheets()
 
 if ws is not None:
     try:
-        # Păstrăm citirea simplă pentru a nu bloca memoria cache
         date_tabel = ws.get_all_records()
         df_anvelope = pd.DataFrame(date_tabel)
         df_anvelope.columns = df_anvelope.columns.str.strip()
@@ -84,13 +90,11 @@ if ws is not None:
         # --- TAB 2: RECEPȚIE INTELIGENTĂ EMAIL ---
         with tab_receptie_gy:
             st.subheader("📦 Înregistrare Rapidă Loturi noi / Pre-Alertă email")
-            
             text_email = st.text_area("Lipește textul emailului aici:", height=150)
             numar_raft = st.text_input("Introduceți numărul Raftului unde le depozitați fizic:")
             
             if st.button("Procesează și Încarcă în Google Sheets"):
                 if text_email and numar_raft:
-                    # Extragere Regex
                     nr_auto_match = re.search(r'\b[A-Z]{1,2}\s*\d{2,3}\s*[A-Z]{3}\b', text_email.upper())
                     vin_match = re.search(r'\b[A-HJ-NPR-Z0-9]{17}\b', text_email.upper())
                     
@@ -98,7 +102,6 @@ if ws is not None:
                     vin = vin_match.group(0) if vin_match else "DE COMPLETAT"
                     data_curenta = datetime.now().strftime("%Y-%m-%d")
                     
-                    # Generare dicționar structurat exact după coloanele tale
                     rand_nou = {
                         'RegistrationNumber': nr_auto,
                         'FleetName': "Client Pre-alertă",
@@ -112,13 +115,9 @@ if ws is not None:
                     }
                     
                     try:
-                        # Aliniem structura cu foaia de calcul cloud
                         toate_coloanele = df_anvelope.columns.tolist()
                         lista_valori_rand = [rand_nou.get(col, "") for col in toate_coloanele]
-                        
-                        # Trimitem datele în mod direct
                         ws.append_row(lista_valori_rand)
-                        
                         st.success("✅ Datele au fost trimise direct în Google Sheets-ul tău!")
                         st.json(rand_nou)
                     except Exception as e:
@@ -129,7 +128,6 @@ if ws is not None:
         # --- TAB 3: RAPOARTE DE GESTIUNE ---
         with tab_rapoarte:
             st.subheader("📊 Situație Sezonieră și Prognoză Facturare Extra")
-            
             peste_termen = 0
             acum = datetime.now()
             
@@ -141,6 +139,3 @@ if ws is not None:
             col1, col2, col3 = st.columns(3)
             col1.metric("Total Linii în Cloud", len(df_anvelope))
             col2.metric("Peste 180 Zile", int(peste_termen))
-            
-            if peste_termen > 0:
-                st.warning(f"Există {peste_termen} poziții care depășesc cele 180 de zile standard.")
