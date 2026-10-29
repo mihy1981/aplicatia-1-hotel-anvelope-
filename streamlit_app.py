@@ -2,36 +2,37 @@ import streamlit as st
 import pandas as pd
 from google.oauth2.service_account import Credentials
 import gspread
-import json
+import re
+import os
+from datetime import datetime
 
 # Configurare interfață profesională
 st.set_page_config(page_title="Gestiune MADYT Cloud", page_icon="🏨", layout="wide")
 
-# Conectare securizată la Google Sheets folosind Secretele Streamlit decodificate ca JSON
 @st.cache_resource
 def conectare_google_sheets():
     try:
-        # Citim datele sub formă de text din Secrets
-        text_secrete = st.secrets["gcp_service_account"]
+        # Căutăm automat orice fișier .json din directorul principal care începe cu acreditările Google
+        fisiere = [f for f in os.listdir(".") if f.endswith(".json") and f.startswith("hotel-anvelope-madyt")]
         
-        # Transformăm textul brut într-un dicționar Python valid utilizând biblioteca JSON
-        info_cheie = json.loads(text_secrete)
-        
-        # Corectăm eventualele erori ale caracterelor de linie nouă
-        if "private_key" in info_cheie:
-            info_cheie["private_key"] = info_cheie["private_key"].replace("\\n", "\n").strip()
+        if not fisiere:
+            st.error("❌ Nu am găsit niciun fișier cheie .json valid încărcat pe GitHub!")
+            return None
             
+        # Selectăm primul fișier de cheie valid identificat în repository
+        nume_cheie = fisiere[0]
+        
         scope = [
             "https://googleapis.com",
             "https://googleapis.com"
         ]
         
-        creds = Credentials.from_service_account_info(info_cheie, scopes=scope)
+        # Citim acreditările securizat în formatul lor nativ, perfect, direct din fișier
+        creds = Credentials.from_service_account_file(nume_cheie, scopes=scope)
         client = gspread.authorize(creds)
         
         # ID-UL REAL ȘI CORECT AL TABELULUI TĂU GOOGLE SHEETS
         tabel = client.open_by_key("1qs5DuQ4--vT0Ti91sqH2om4B1dHIm_iyNLnkcvL5IeA")
-        
         return tabel.get_worksheet(0)
     except Exception as e:
         st.error(f"❌ Eroare la conexiunea cu Google Sheets: {e}")
@@ -97,14 +98,47 @@ if ws is not None:
             
             if st.button("Procesează și Încarcă în Google Sheets"):
                 if text_email and numar_raft:
-                    st.success("✅ Funcție activată! Datele au fost trimise direct în Google Sheets-ul tău.")
+                    nr_auto_match = re.search(r'\b[A-Z]{1,2}\s*\d{2,3}\s*[A-Z]{3}\b', text_email.upper())
+                    vin_match = re.search(r'\b[A-HJ-NPR-Z0-9]{17}\b', text_email.upper())
+                    nr_auto = nr_auto_match.group(0).replace(" ", "") if nr_auto_match else "DE COMPLETAT"
+                    vin = vin_match.group(0) if vin_match else "DE COMPLETAT"
+                    data_curenta = datetime.now().strftime("%Y-%m-%d")
+                    
+                    rand_nou = {
+                        'RegistrationNumber': nr_auto, 
+                        'FleetName': "Client Pre-alertă", 
+                        'Chassis Num': vin, 
+                        'Make/Model': "Identificat din email", 
+                        'MaterialDescription': "Set Anvelope", 
+                        'StorageDate': data_curenta, 
+                        'TreadDepth': "N/A", 
+                        'DOT': "N/A", 
+                        'StorageNote(Comments/AccessoriesStored)': f"Locație: {numar_raft}."
+                    }
+                    try:
+                        toate_coloanele = df_anvelope.columns.tolist()
+                        lista_valori_rand = [rand_nou.get(col, "") for col in toate_coloanele]
+                        ws.append_row(lista_valori_rand)
+                        st.success("✅ Datele au fost trimise direct în Google Sheets-ul tău!")
+                        st.json(rand_nou)
+                    except Exception as e:
+                        st.error(f"Eroare la scrierea directă: {e}")
                 else:
                     st.error("Te rog să completezi ambele câmpuri!")
 
         # --- TAB 3: RAPOARTE DE GESTIUNE ---
         with tab_rapoarte:
             st.subheader("📊 Situație Sezonieră și Prognoză Facturare Extra")
+            peste_termen = 0
+            acum = datetime.now()
+            if 'StorageDate' in df_anvelope.columns:
+                df_anvelope['StorageDate_Clean'] = pd.to_datetime(df_anvelope['StorageDate'], errors='coerce')
+                zile_depozitare = (acum - df_anvelope['StorageDate_Clean']).dt.days
+                peste_termen = (zile_depozitare > 180).sum()
+                
             col1, col2, col3 = st.columns(3)
             col1.metric("Total Linii în Cloud", len(df_anvelope))
-            st.info("💡 Acest panou va contoriza automat regula celor 180 de zile standard.")
-
+            col2.metric("Peste 180 Zile", int(peste_termen))
+            col3.metric("Status Server", "Online")
+            if peste_termen > 0:
+                st.warning(f"💡 Există {peste_termen} poziții înregistrate care depășesc cele 180 de zile standard.")
