@@ -5,10 +5,9 @@ import gspread
 import re
 from datetime import datetime
 
-# Configurare interfață profesională
+# Configurare interfață profesională (TREBUIE SĂ FIE DOAR O SINGURĂ DATĂ AICI)
 st.set_page_config(page_title="Gestiune MADYT Cloud", page_icon="🏨", layout="wide")
 
-@st.set_page_config(page_title="Gestiune MADYT Cloud", page_icon="🏨", layout="wide")
 @st.cache_resource
 def conectare_google_sheets():
     try:
