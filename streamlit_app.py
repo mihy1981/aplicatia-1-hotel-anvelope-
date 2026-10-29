@@ -2,22 +2,25 @@ import streamlit as st
 import pandas as pd
 from google.oauth2.service_account import Credentials
 import gspread
+import json
 
 # Configurare interfață profesională
 st.set_page_config(page_title="Gestiune MADYT Cloud", page_icon="🏨", layout="wide")
 
-# Conectare securizată la Google Sheets folosind Exclusiv Secretele Streamlit
+# Conectare securizată la Google Sheets folosind Secretele Streamlit decodificate ca JSON
 @st.cache_resource
 def conectare_google_sheets():
     try:
-        # Citim datele direct și curat din secțiunea sigură Secrets a aplicației
-        info_cheie = dict(st.secrets["gcp_service_account"])
+        # Citim datele sub formă de text din Secrets
+        text_secrete = st.secrets["gcp_service_account"]
         
-        # REPARARE CRUCIALĂ: Corectăm caracterele de linie nouă (\n) dacă s-au salvat ca text simplu
+        # Transformăm textul brut într-un dicționar Python valid utilizând biblioteca JSON
+        info_cheie = json.loads(text_secrete)
+        
+        # Corectăm eventualele erori ale caracterelor de linie nouă
         if "private_key" in info_cheie:
             info_cheie["private_key"] = info_cheie["private_key"].replace("\\n", "\n").strip()
             
-        # REPARARE SCOPE: Endpoint-urile v4 complete obligatorii pentru acces și scriere în tabele
         scope = [
             "https://googleapis.com",
             "https://googleapis.com"
@@ -29,7 +32,6 @@ def conectare_google_sheets():
         # ID-UL REAL ȘI CORECT AL TABELULUI TĂU GOOGLE SHEETS
         tabel = client.open_by_key("1qs5DuQ4--vT0Ti91sqH2om4B1dHIm_iyNLnkcvL5IeA")
         
-        # Luăm în mod automat PRIMA foaie din tabel, indiferent de numele ei
         return tabel.get_worksheet(0)
     except Exception as e:
         st.error(f"❌ Eroare la conexiunea cu Google Sheets: {e}")
@@ -52,7 +54,7 @@ if ws is not None:
         # Meniu superior cu tab-uri pentru spetele din service
         tab_cautare, tab_receptie_gy, tab_rapoarte = st.tabs(["🔍 Căutare Stoc", "📦 Recepție Pre-Alertă GY", "📊 Rapoarte Management"])
 
-        # --- TAB 1: CĂUTARE UNIVERSALĂ (LOGICA TA DE COLOANE D, B, F, G, N, P, Q, R, U) ---
+        # --- TAB 1: CĂUTARE UNIVERSALĂ ---
         with tab_cautare:
             st.subheader("🔍 Verifică Stoc Hotel Anvelope")
             termen_cautat = st.text_input("Introdu Număr Auto, Cod VIN sau Nume Client:").upper().strip()
@@ -105,3 +107,4 @@ if ws is not None:
             col1, col2, col3 = st.columns(3)
             col1.metric("Total Linii în Cloud", len(df_anvelope))
             st.info("💡 Acest panou va contoriza automat regula celor 180 de zile standard.")
+
