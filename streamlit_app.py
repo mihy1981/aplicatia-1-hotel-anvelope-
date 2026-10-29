@@ -8,11 +8,16 @@ from datetime import datetime
 # Configurare interfață profesională
 st.set_page_config(page_title="Gestiune MADYT Cloud", page_icon="🏨", layout="wide")
 
+@st.set_page_config(page_title="Gestiune MADYT Cloud", page_icon="🏨", layout="wide")
 @st.cache_resource
 def conectare_google_sheets():
     try:
-        # Citim direct configurarea curată din panoul Secrets al Streamlit
-        info_cheie = st.secrets["gcp_service_account"]
+        # Citim configurația salvată în panoul Secrets al Streamlit
+        info_cheie = dict(st.secrets["gcp_service_account"])
+        
+        # REPARARE AUTOMATĂ: Înlocuim transformările greșite ale liniilor noi din text
+        if "private_key" in info_cheie:
+            info_cheie["private_key"] = info_cheie["private_key"].replace("\\n", "\n").strip()
         
         scope = [
             "https://googleapis.com",
