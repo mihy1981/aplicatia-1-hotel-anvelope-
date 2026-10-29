@@ -11,13 +11,14 @@ st.set_page_config(page_title="Gestiune MADYT Cloud", page_icon="🏨", layout="
 @st.cache_resource
 def conectare_google_sheets():
     try:
-        # Definirea scope-urilor corecte pentru citire și scriere
+        # Citim direct configurarea curată din panoul Secrets al Streamlit
+        info_cheie = st.secrets["gcp_service_account"]
+        
         scope = [
             "https://googleapis.com",
             "https://googleapis.com"
         ]
-        # LINIA 17 ACTUALIZATĂ: Citim direct fișierul nou activ din repository-ul tău
-        creds = Credentials.from_service_account_file("hotel-anvelope-madyt-e58010bf06a3.json", scopes=scope)
+        creds = Credentials.from_service_account_info(info_cheie, scopes=scope)
         client = gspread.authorize(creds)
         
         # ID-UL TABELULUI GOOGLE SHEETS
