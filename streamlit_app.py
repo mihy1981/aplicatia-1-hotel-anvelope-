@@ -5,18 +5,26 @@ import gspread
 import re
 from datetime import datetime
 
-# Configurare interfață profesională (TREBUIE SĂ FIE DOAR O SINGURĂ DATĂ AICI)
+# Configurare interfață profesională
 st.set_page_config(page_title="Gestiune MADYT Cloud", page_icon="🏨", layout="wide")
 
 @st.cache_resource
 def conectare_google_sheets():
     try:
-        # Citim configurația salvată în panoul Secrets al Streamlit
-        info_cheie = dict(st.secrets["gcp_service_account"])
-        
-        # REPARARE AUTOMATĂ: Înlocuim transformările greșite ale liniilor noi din text
-        if "private_key" in info_cheie:
-            info_cheie["private_key"] = info_cheie["private_key"].replace("\\n", "\n").strip()
+        # Integrare directă a cheii tale reale, formatată nativ în cod
+        info_cheie = {
+            "type": "service_account",
+            "project_id": "hotel-anvelope-madyt",
+            "private_key_id": "8fdbd5da8b0ff9e6bc3d740abb08803d2c54ad65",
+            "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDB6I3k2feYWRCN\npnZhiEMLg/JsFu4AY+Skx6OBqT5mW6imM/fwCVmGLwl59BMdu5OxsFVNfWLSqS2f\n15CqhYAUhLtGj7gBSfs2ChEEi4KQ7sbQwZAvHlyGoM+9iVpKCIztBHoszl2X1zF7\ndOkoQkbDU7vbzkvT0O/7QC/S+NRCEKgtvlUuehb8sFNggUxNg0137jRo+zeXOQFG\ndmYx92YWPks1fRGwYggHeFoL4AjzkbTSm1miOFgjMb+YdRJXQ47MM7y87/N+3Gsc\nCVQVcTITrFpmtgY+CJVAIW5OMghW8vEQwOoV/c8KTZZl/f4ax9+PhgTLisdO2cb2\nndQFsKqlAgMBAAECggEAAKQRTpA43QYBepuEayW/nGiGfCELIR7X+QJzewCfF1rf\njoDJHIkYhLAyLqTBVmtbCyWyFnsVyiNiOK8z9bzkuDpbFD67SX6pI1vV8ccUaFwC\nPv++fknyONeMAoMuvYjUV9bqsuL/lLFb7DAARNmLg4sdIIQa//t46UukQ641N2Nk\nKUwWa3OTma691FPAkl4BlrjiA1ISZZoNmZUa3dbsMWWErdWyP3uoWJwtRaBPVuZ4\nGncEQjz5qGmNKmmPzEej72JkOVpEremcaL+W+LysYOPgOjQ/IK9V8C0pvgdRRAD8\nk1Djvtrs29ecJaZFDNO+JlzF09bFl0B4P4RUOpcQSQKBgQDf+bmSTl9n53M9JhgC\nzcDRyZaYlWuxC/RmLmDVSu/17q6lRSzkSeuC3JUYS9qFm/g5wmGBu38MqU3CDpVN\nHe7auMhmnqH19vzEF/r0WxdJsMgirFLqEO1irATFnMcIM1Fkg5N1rrjuQDxtQLRp\nLKvFo/OFKoM2bwrGK0X1WHymvQKBgQDdokVWpYWfn5598J3/3w+RO7wrREk+PsJc\nzTdEZnSC0FFiaJanV6Hm/O/OSXFmDb+MnbJXEo5dNdrdi2DPKV06nDa99eCLu0d8\nuCo5sOTPHLv62h4ARbckd1/TZLzABfSF/TNKlHwL0oDxoQ8uamhxbDD7QUQCIuRn\nQJgeFhXmCQKBgFpsvQIXiCcv53OpnIoNPaq1A4ro0IizNeHHGasjTQvyaCorantk\naKP1oHAlt7y3gpj3JFy3MQ0QkWcmchqnWhaOAcKEiwj9xYD52YSr/hPvPm3ZOsRr\nPxvWLTsHF8f0yAiXooIhn2H5JyxIsk3ADj2F+rwptL3WSPhG4kCyj+jVAoGAHOQN\nQ9k5zPACugoGnpcWMWlnAwDYx1to/K3nmWv9nhvHsBtQICpFOZYZMHvUY2hBYvQf\njkgl9LKTgDOt//M1avF4FVUa2zwjeneLUY/kk7b8LhwGsyRjVkaVYDoOfL2J/Xlf\nGUa30Na05kqHbxaB3N8sl2QPmHOx8F+0NJ/OZPkCgYEAlYK/NhZZnXy+rZDVlF1o\nqKjMkUGaFSIOpsKp0zFba3eUUN0wn81mZHKL+IDo6GB3Hnxv4qI6VEQUkaF8N4Az\n+avrUetdEm3RSsq98WU0YlgY7wErxFN1dflLRNG65n5vke3gx/fQ3dELe38vW6aZ\nfQk1yHiZ4hPqx/F90T+TMqM=\n-----END PRIVATE KEY-----\n",
+            "client_email": "madyt-hotel@://gserviceaccount.com",
+            "client_id": "105244728434298408950",
+            "auth_uri": "https://google.com",
+            "token_uri": "https://googleapis.com",
+            "auth_provider_x509_cert_url": "https://googleapis.com",
+            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/madyt-hotel%40://gserviceaccount.com",
+            "universe_domain": "googleapis.com"
+        }
         
         scope = [
             "https://googleapis.com",
