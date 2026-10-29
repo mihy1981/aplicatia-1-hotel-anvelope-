@@ -11,12 +11,13 @@ st.set_page_config(page_title="Gestiune MADYT Cloud", page_icon="🏨", layout="
 @st.cache_resource
 def conectare_google_sheets():
     try:
-        # Citim acreditările direct din fișierul JSON pe care îl vom urca pe GitHub
+        # Definirea scope-urilor corecte pentru citire și scriere
         scope = [
             "https://googleapis.com",
             "https://googleapis.com"
         ]
-        creds = Credentials.from_service_account_file("cheie_google.json", scopes=scope)
+        # LINIA 17 CORECTATĂ: Citim direct fișierul exact așa cum este salvat în repository
+        creds = Credentials.from_service_account_file("hotel-anvelope-madyt-8fdbd5da8b0f.json", scopes=scope)
         client = gspread.authorize(creds)
         
         # ID-UL TABELULUI GOOGLE SHEETS
