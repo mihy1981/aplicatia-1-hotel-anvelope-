@@ -16,8 +16,8 @@ def conectare_google_sheets():
             "https://googleapis.com",
             "https://googleapis.com"
         ]
-        # LINIA 17 CORECTATĂ: Citim direct fișierul exact așa cum este salvat în repository
-        creds = Credentials.from_service_account_file("hotel-anvelope-madyt-8fdbd5da8b0f.json", scopes=scope)
+        # LINIA 17 ACTUALIZATĂ: Citim direct fișierul nou activ din repository-ul tău
+        creds = Credentials.from_service_account_file("hotel-anvelope-madyt-e58010bf06a3.json", scopes=scope)
         client = gspread.authorize(creds)
         
         # ID-UL TABELULUI GOOGLE SHEETS
