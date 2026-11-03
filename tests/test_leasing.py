@@ -73,13 +73,13 @@ def test_leasing_flow():
                                               WheelType="Tyre Only"), "R1-N1-P1")
     assert code == "R1-N1-P1" and worn == 4
     h = csv(tmp, "Hotel").set_index("RegistrationNumber").loc["B55TST"]
-    assert h.Status == "DEPOZITAT" and h.FleetName == "HERTZ" and h.UserName == "Ion Pop" and h.UserPhone == "0722"
+    assert h.Status == "DECIZIE_GY_ASTEPTATA" and h.FleetName == "HERTZ" and h.UserName == "Ion Pop" and h.UserPhone == "0722"
     ty = csv(tmp, "Hotel_Anvelope")
     assert (ty.RegistrationNumber == "B55TST").sum() == 4
     rec = csv(tmp, "Receptii")
     assert rec.Status[0] == "SCHIMBAT" and rec.SwapDate[0]
     f = csv(tmp, "Fise_GY")
-    assert len(f) == 1 and f.Status[0] == "DE_INTRODUS_GY" and f.Type[0] == "SCHIMB + DEPOZITARE"
+    assert len(f) == 1 and f.Status[0] == "DE_INTRODUS_GY" and f.Type[0] == "SCHIMB (MONTAJ SET LEASING)"
 
     # fișa: tranziții permise / nepermise
     fid = f.FisaId[0]
@@ -164,7 +164,7 @@ def test_vin_flow():
     assert (csv(tmp, "Istoric").Action == "LEGARE_RECEPTIE").sum() == 1
     m.do_leasing_swap(rid, tyres(4, ProductGroup="Summer", TreadDepth="3"), "")
     h = csv(tmp, "Hotel").set_index("RegistrationNumber").loc["B77VIN"]
-    assert h.VIN == vin and h.Status == "DEPOZITAT"
+    assert h.VIN == vin and h.Status == "DECIZIE_GY_ASTEPTATA"
     res = m.resolve_car("ZAW123456")
     assert res["plates"] == ["B77VIN"] and vin in res["vins"]
     assert m.resolve_car("B77VIN")["by"] == "plate"
@@ -193,3 +193,161 @@ def test_import_vin():
     assert skipped == [] and len(created) == 2
     rec = csv(tmp, "Receptii")
     assert set(rec.Condition) == {"NOI", "FOLOSITE"} and "WVWZZZ1KZAW111111" in set(rec.VIN)
+
+
+def test_gy_decision_and_notices():
+    tmp = tempfile.mkdtemp()
+    m = load_app(tmp)
+    m.do_generate_positions(1, 1, 1, 4, "COMUN", False)
+    # --- decizia GY după montaj
+    rid = m.do_leasing_reception({"RegistrationNumber": "B10GYQ", "FleetName": "HERTZ", "VIN": "WVWZZZ1KZAW000001"},
+                                 tyres())
+    m.do_leasing_swap(rid, tyres(4, BRAND="Michelin", ProductGroup="Summer", TreadDepth="5", WheelType="Tyre Only",
+                                 DOT="1222"), "R1-N1-P1")
+    h = m.load(m.HOTEL, fresh=True)
+    q = h[h.Status == "DECIZIE_GY_ASTEPTATA"]
+    assert list(q.RegistrationNumber) == ["B10GYQ"] and q.GYAskedDate.iloc[0]
+    assert m.occupied_map(h).get("R1-N1-P1") == "B10GYQ"  # poziția rămâne ocupată
+    txt = m.gy_email_text(q.iloc[0], m.tyres_of(m.load(m.TY, fresh=True), "B10GYQ"))
+    assert "B10GYQ" in txt and "WVWZZZ1KZAW000001" in txt and "DOT 1222" in txt and "205/55R16" in txt
+    assert "MICHELIN" in txt.upper() and "5,0 mm" in txt and "PĂSTRĂM" in txt
+    assert m.do_gy_decision(["B10GYQ"], "PASTRAM", "2026-01-15", note="email GY") == 1
+    h = m.load(m.HOTEL, fresh=True).set_index("RegistrationNumber").loc["B10GYQ"]
+    assert h.Status == "DEPOZITAT" and h.BillingStart == "2026-01-15" and h.BillingEnd == "2026-07-15"
+    f = csv(tmp, "Fise_GY")
+    s6 = f[f.Type == "DEPOZITARE 6 LUNI"]
+    assert len(s6) == 1 and s6.Status.iloc[0] == "DE_INTRODUS_GY" and s6.PeriodEnd.iloc[0] == "2026-07-15"
+    # perioada expirată -> refacturare
+    assert list(m.storage_expired(m.load(m.HOTEL, fresh=True)).RegistrationNumber) == ["B10GYQ"]
+    assert m.do_rebill(["B10GYQ"]) == 1
+    f = csv(tmp, "Fise_GY")
+    assert (f.Type == "DEPOZITARE 6 LUNI").sum() == 2 and "2026-07-15" in set(f.PeriodStart)
+    # reciclare
+    rid2 = m.do_leasing_reception({"RegistrationNumber": "B11GYQ", "FleetName": "HERTZ"}, tyres())
+    m.do_leasing_swap(rid2, tyres(4, ProductGroup="Summer", TreadDepth="2", WheelType="Tyre Only"), "R1-N1-P2")
+    assert m.do_gy_decision(["B11GYQ"], "RECICLAM", billable=True) == 1
+    h = m.load(m.HOTEL, fresh=True).set_index("RegistrationNumber").loc["B11GYQ"]
+    assert h.Status == "RECICLAT" and h.GYDecision == "RECICLAT"
+    assert "R1-N1-P2" not in m.occupied_map(m.load(m.HOTEL, fresh=True))
+    assert (csv(tmp, "Hotel_Anvelope").RegistrationNumber == "B11GYQ").sum() == 0
+    assert csv(tmp, "Arhiva_Anvelope").Reason.str.contains("RECICLARE").sum() == 4
+    f = csv(tmp, "Fise_GY")
+    fr = f[f.Type == "RECICLARE"]
+    assert len(fr) == 1 and fr.Billable.iloc[0] == "DA"
+    m.do_fisa_billable(fr.FisaId.iloc[0], False)
+    assert csv(tmp, "Fise_GY").set_index("FisaId").at[fr.FisaId.iloc[0], "Billable"] == "NU"
+
+    # --- anunțuri curier: anunțul nu e sosire; recepția îl închide
+    items = [
+        {"date": "2026-10-20 10:00", "subject": "s1", "kind": "VIN (primiți)", "id": "B20NOT", "id_type": "nr",
+         "awb": "7000000000001", "qty": 4, "season": ["Winter"], "desc": ["195/65R15 91T ESKIMO S3+ MS"],
+         "from": "HIL SERV", "courier": "FAN Courier"},
+        {"date": "2026-10-21 10:00", "subject": "s2", "kind": "VIN (primiți)", "id": "YARVNFC35RZ999999",
+         "id_type": "VIN", "awb": "7000000000002", "qty": 4, "season": ["Winter"], "desc": ["205/75R16C 113R CW51"]},
+        {"date": "2026-10-22", "subject": "s3", "kind": "VIN (primiți)", "id": "B21NOT", "awb": "7000000000003",
+         "qty": 4, "season": ["Winter"], "desc": ["x"]},
+        {"date": "2026-10-23", "subject": "s3b", "kind": "ANULARE", "id": "B21NOT", "awb": "7000000000003"},
+        {"date": "2026-10-24", "subject": "s4", "kind": "PLEACĂ (pregătiți pentru ridicare FAN Courier)",
+         "id": "B22OUT", "awb": "7000000000004", "qty": 4, "season": ["Winter"], "desc": ["y"], "to": "NESTE"},
+    ]
+    rows, skipped = rimp.notices_from_interspace(items)
+    assert len(rows) == 3 and skipped == ["7000000000003"]
+    assert [r["Status"] for r in rows] == ["ANUNTAT", "ANUNTAT", "DE_PREDAT"]
+    assert rows[1]["VIN"] == "YARVNFC35RZ999999" and rows[1]["RegistrationNumber"] == ""
+    assert rimp.notices_from_interspace(items, [r["AWB"] for r in rows])[0] == []
+    m.backend().append_many(m.NOT, [[r[c] for c in m.NOT_COLS] for r in rows], m.NOT_COLS)
+    tt = rimp.notice_tyres(rows[0])
+    assert len(tt) == 4 and tt[0]["BRAND"] == "SAVA" and tt[0]["ProductGroup"] == "Winter"
+    # recepție datată ÎNAINTE de anunț -> nu închide anunțul
+    m.do_leasing_reception({"RegistrationNumber": "B20NOT", "ReceptionDate": "2026-10-12"}, tyres())
+    nt = csv(tmp, "Anunturi_Curier").set_index("AWB")
+    assert nt.at["7000000000001", "Status"] == "ANUNTAT"
+    # import (bulk) cu VIN după anunț -> închis automat, cu discrepanță la cantitate
+    created, _ = m.do_bulk_leasing_reception([{"RegistrationNumber": "", "VIN": "YARVNFC35RZ999999",
+                                               "FleetName": "HERTZ", "tyres": tyres(2)}], "2026-10-25")
+    nt = csv(tmp, "Anunturi_Curier").set_index("AWB")
+    assert nt.at["7000000000002", "Status"] == "RECEPTIONAT" and "DISCREPANȚĂ" in nt.at["7000000000002", "Note"]
+    rec = csv(tmp, "Receptii")
+    assert rec[rec.VIN == "YARVNFC35RZ999999"].AWB.iloc[0] == "7000000000002"
+    # confirmare explicită din listă (NoticeId) pentru B20NOT
+    nid = nt.at["7000000000001", "NoticeId"]
+    m.do_leasing_reception({"RegistrationNumber": "B20NOT", "ReceptionDate": "2026-10-26", "NoticeId": nid,
+                            "AWB": "7000000000001"}, tt, allow_duplicate=True)
+    nt = csv(tmp, "Anunturi_Curier").set_index("AWB")
+    assert nt.at["7000000000001", "Status"] == "RECEPTIONAT" and nt.at["7000000000001", "ReceptionId"]
+    # predare la curier
+    m.do_notice_status(nt.at["7000000000004", "NoticeId"], "PREDAT", "2026-10-27", "predat")
+    nt = csv(tmp, "Anunturi_Curier").set_index("AWB")
+    assert nt.at["7000000000004", "Status"] == "PREDAT" and nt.at["7000000000004", "ClosedDate"] == "2026-10-27"
+    try:
+        m.do_notice_status(nt.at["7000000000004", "NoticeId"], "PREDAT")
+        raise AssertionError("dublă predare")
+    except m.BackendError:
+        pass
+
+
+def test_enrich():
+    hotel = pd.DataFrame({"RegistrationNumber": ["B1AAA"], "FleetName": ["HERTZ"], "Status": ["DEPOZITAT"],
+                          "VIN": [""]})
+    ty = pd.DataFrame({"RegistrationNumber": ["B1AAA"], "FleetName": ["HERTZ"], "Chassis Num": ["VF1MB000172828387"],
+                       "MaterialDescription": ["195/75R16C 107R X"]})
+    old = pd.DataFrame({"RegistrationNumber": ["AG061763/B2BBB", "", "B2BBB Count"],
+                        "wms": ["", "B3CCC", ""], "FleetName": ["Autotehnica", "Autotehnica", ""],
+                        "Fleet VIN": ["", "AHTBB3CD201789378", ""], "ProductGroup": ["", "265/60R18 114H WS71", ""],
+                        "Chassis Num": ["VF1VB000472918766", "", ""]})
+    idx = rimp.ref_index([("Hotel", hotel), ("Hotel_Anvelope", ty), ("old", old)])
+    assert idx["B1AAA"]["VIN"] == "VF1MB000172828387" and idx["B1AAA"]["FleetName"] == "HERTZ"
+    assert idx["B2BBB"]["VIN"] == "VF1VB000472918766" and "AG061763" in idx["B2BBB"]["aliases"]
+    assert idx["B3CCC"]["VIN"] == "AHTBB3CD201789378" and idx["B3CCC"]["FleetName"] == "Autotehnica"
+    recs = [{"RegistrationNumber": "B1AAA", "VIN": "", "FleetName": "", "tyres": [{"MaterialDescription": "205/55R16 91H"}]},
+            {"RegistrationNumber": "B9ZZZ", "VIN": "", "FleetName": "", "tyres": [{"MaterialDescription": "205/55R16"}]}]
+    rep = rimp.enrich_plan(recs, idx)
+    assert recs[0]["FleetName"] == "HERTZ" and recs[0]["VIN"] == "VF1MB000172828387"
+    assert "dimensiune diferită" in rep[0]["Observații"] and "necunoscută" in rep[1]["Observații"]
+
+
+PREP = r"""
+import os, sys
+sys.path.insert(0, sys.argv[1]); sys.path.insert(0, os.path.join(sys.argv[1], "tests"))
+from test_leasing import load_app, tyres, rimp
+m = load_app(sys.argv[2])
+m.do_generate_positions(1, 1, 1, 2, "COMUN", False)
+rid = m.do_leasing_reception({"RegistrationNumber": "B10GYQ", "FleetName": "HERTZ"}, tyres())
+m.do_leasing_swap(rid, tyres(4, ProductGroup="Summer", WheelType="Tyre Only"), "R1-N1-P1")
+rows, _ = rimp.notices_from_interspace([
+    {"date": "2026-10-20", "kind": "VIN (primiți)", "id": "B20NOT", "awb": "7000000000001", "qty": 4,
+     "season": ["Winter"], "desc": ["195/65R15 91T ESKIMO S3+ MS"]},
+    {"date": "2026-10-24", "kind": "PLEACĂ", "id": "B22OUT", "awb": "7000000000004", "qty": 4}])
+m.backend().append_many(m.NOT, [[r[c] for c in m.NOT_COLS] for r in rows], m.NOT_COLS)
+"""
+
+
+def test_render_gy_and_courier_tabs():
+    import subprocess
+    tmp = tempfile.mkdtemp()
+    # datele se pregătesc într-un proces separat (modul „bare” al aplicației nu se amestecă cu AppTest)
+    subprocess.run([sys.executable, "-c", PREP, ROOT, tmp], check=True, capture_output=True,
+                   env=dict(os.environ, MADYT_DEMO="1", MADYT_DEMO_DIR=tmp))
+    # AppTest tot într-un proces curat (după modul „bare” rămâne un context st.form agățat)
+    out = subprocess.run([sys.executable, "-c", RENDER, APP], capture_output=True, text=True,
+                         env=dict(os.environ, MADYT_DEMO="1", MADYT_DEMO_DIR=tmp))
+    assert out.returncode == 0, out.stderr[-3000:]
+    assert "RENDER_OK" in out.stdout, out.stdout[-2000:]
+
+
+RENDER = r"""
+import sys
+from streamlit.testing.v1 import AppTest
+at = AppTest.from_file(sys.argv[1], default_timeout=60)
+at.run()
+assert not at.exception, at.exception
+labels = [t.label for t in at.tabs]
+assert any("Curier" in x for x in labels) and any("De întrebat GY" in x for x in labels)
+gy = at.tabs[[i for i, x in enumerate(labels) if "De întrebat GY" in x][0]]
+assert any("B10GYQ" in c.value for c in gy.code)
+vals = {mm.label: mm.value for mm in at.metric}
+assert vals.get("De întrebat GY (set demontat)") == "1", vals
+assert vals.get("Sosiri anunțate curier (în drum)") == "1", vals
+assert vals.get("De predat curierului") == "1", vals
+print("RENDER_OK")
+"""

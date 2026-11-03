@@ -52,7 +52,8 @@ GY_HEADER = [("CITY" if c == "CITY_2" else c) for c in GY_COLS]  # antetul real,
 VEHICLE_COLS = ["SOLD-TO", "FleetName", "CITY", "RegistrationNumber", "Fleet VIN", "Chassis Num", "Make/Model",
                 "SHIP-TO", "ServiceProviderName", "CITY_2"]
 HOTEL_COLS = ["RegistrationNumber", "FleetName", "PositionCode", "Status", "StorageDate", "ExitDate", "Season",
-              "LegacyLocation", "Phone", "Email", "Note", "UserName", "UserPhone", "ClientCompany", "VIN"]
+              "LegacyLocation", "Phone", "Email", "Note", "UserName", "UserPhone", "ClientCompany", "VIN",
+              "GYDecision", "GYAskedDate", "GYDecisionDate", "BillingStart", "BillingEnd"]
 CAR_PEOPLE = ["UserName", "UserPhone", "ClientCompany"]  # utilizator mașină + firma client cu contract de leasing
 DEFAULT_FLEETS = ["ARVAL SERVICE LEASE ROMANIA SRL", "Autotehnica Fleet Services SRL", "HERTZ"]
 POZ_COLS = ["PositionCode", "Row", "Level", "Leg", "FleetName", "OccupiedPlate"]
@@ -64,9 +65,12 @@ FISE = "Fise_GY"
 REC_COLS = rimp.REC_COLS  # definite în receptii_import.py (folosite și de scripts/import_receptie.py)
 RTY_COLS = rimp.RTY_COLS
 FISE_COLS = ["FisaId", "ReceptionId", "RegistrationNumber", "FleetName", "Type", "Status", "CreatedDate", "SentDate",
-             "ApprovedDate", "RejectedDate", "InvoicedDate", "GYRef", "Note", "Operator"]
+             "ApprovedDate", "RejectedDate", "InvoicedDate", "GYRef", "Note", "Operator", "PeriodStart", "PeriodEnd",
+             "Billable"]
+NOT = rimp.NOT_TAB  # anunțuri curier (Interspace / FAN Courier)
+NOT_COLS = rimp.NOT_COLS
 SCHEMAS = {TY: GY_COLS, HOTEL: HOTEL_COLS, POZ: POZ_COLS, IST: IST_COLS, ARH: ARH_COLS,
-           REC: REC_COLS, RTY: RTY_COLS, FISE: FISE_COLS}
+           REC: REC_COLS, RTY: RTY_COLS, FISE: FISE_COLS, NOT: NOT_COLS}
 
 # Recepții leasing
 RC_OPEN = "RECEPTIONAT"
@@ -81,12 +85,22 @@ F_RO = {F_TODO: "De introdus în GY", F_SENT: "Trimisă în GY", F_OK: "Aprobat�
         F_REJ: "Respinsă GY", F_INV: "Facturată"}
 F_DATE = {F_SENT: "SentDate", F_OK: "ApprovedDate", F_REJ: "RejectedDate", F_INV: "InvoicedDate", F_TODO: ""}
 F_NEXT = {F_TODO: [F_SENT], F_SENT: [F_OK, F_REJ], F_REJ: [F_TODO, F_SENT], F_OK: [F_INV], F_INV: []}
-FT_SWAP = "SCHIMB + DEPOZITARE"
+FT_SWAP = "SCHIMB (MONTAJ SET LEASING)"
 FT_EXTRA = "EXTRA DEPOZITARE"
+FT_STORE6 = "DEPOZITARE 6 LUNI"
+FT_RECY = "RECICLARE"
+BILL_MONTHS = 6
+GYQ_DAYS = 7  # după atâtea zile fără răspuns GY -> atenționare
 
 COMUN = "COMUN"
 ST_DEP = "DEPOZITAT"
 ST_RID = "RIDICAT"
+ST_GYQ = "DECIZIE_GY_ASTEPTATA"  # set dat jos la montajul unui set de leasing: GY decide păstrare sau reciclare
+ST_RECY = "RECICLAT"
+ST_IN = (ST_DEP, ST_GYQ)  # statusuri cu anvelope fizic în hotel
+N_IN, N_OUT, N_ANN, N_REC, N_CANC, N_DISC = rimp.N_IN, rimp.N_OUT, rimp.N_ANN, rimp.N_REC, rimp.N_CANC, rimp.N_DISC
+N_TODO_OUT, N_DONE_OUT, N_OPEN_IN = rimp.N_TODO_OUT, rimp.N_DONE_OUT, rimp.N_OPEN_IN
+ST_RO = {ST_DEP: "DEPOZITAT", ST_GYQ: "DECIZIE GY AȘTEPTATĂ", ST_RID: "RIDICAT", ST_RECY: "RECICLAT"}
 SEASONS = ["Winter", "Summer", "All Season"]  # valorile GY din ProductGroup
 SEASON_RO = {"Winter": "IARNA", "Summer": "VARA", "All Season": "ALL SEASON", "": "-"}
 WHEEL_TYPES = ["Tyre Only", "Alloy", "Steel"]
@@ -108,7 +122,12 @@ DISPLAY = {
     "SentDate": "Trimisă GY", "ApprovedDate": "Aprobată GY", "RejectedDate": "Respinsă GY",
     "InvoicedDate": "Facturată", "GYRef": "Nr. fișă GY", "CreatedAt": "Creat la",
     "UserName": "Utilizator", "UserPhone": "Telefon utilizator", "ClientCompany": "Firmă client",
-    "VIN": "VIN", "Condition": "Stare (NOI/FOLOSITE)",
+    "VIN": "VIN", "Condition": "Stare (NOI/FOLOSITE)", "GYDecision": "Decizie GY", "GYAskedDate": "Întrebat GY",
+    "GYDecisionDate": "Dată decizie GY", "BillingStart": "Facturare de la", "BillingEnd": "Facturare până la",
+    "PeriodStart": "Perioadă de la", "PeriodEnd": "Perioadă până la", "Billable": "Facturabil",
+    "MaterialCode": "Cod material GY", "AWB": "AWB", "NoticeId": "ID anunț", "NoticeDate": "Dată anunț",
+    "Direction": "Sens", "Courier": "Curier", "Counterparty": "Expeditor / destinatar", "Contract": "Contract",
+    "ExpectedTyres": "Anv. anunțate", "Description": "Descriere", "ClosedDate": "Închis la", "Source": "Sursă",
 }
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -564,10 +583,10 @@ def initialize(demo, spreadsheet_id, demo_dir):
             f"{ty['RegistrationNumber'].nunique()} mașini. Foaia '{title}' a rămas neatinsă."
             + (f" {skipped} rânduri fără număr auto (ex. rând de totaluri) au fost ignorate." if skipped else "")
             + " Seturile importate nu au încă poziție R-N-P; poziția se alege la primul schimb.")
-    for name in (HOTEL, POZ, IST, ARH, REC, RTY, FISE):
+    for name in (HOTEL, POZ, IST, ARH, REC, RTY, FISE, NOT):
         if not be.exists(name):
             be.write(name, pd.DataFrame(columns=SCHEMAS[name]))
-    for name in (HOTEL, REC):
+    for name in (HOTEL, REC, RTY, FISE):
         try:
             be.ensure_header(name, SCHEMAS[name])
         except Exception:  # noqa: BLE001 – nu blocăm aplicația pentru antet
@@ -598,7 +617,7 @@ def clear_cache():
 
 
 def occupied_map(hotel):
-    dep = hotel[(hotel["Status"] == ST_DEP) & (hotel["PositionCode"] != "")]
+    dep = hotel[hotel["Status"].isin(ST_IN) & (hotel["PositionCode"] != "")]
     return dict(zip(dep["PositionCode"], dep["RegistrationNumber"]))
 
 
@@ -639,11 +658,11 @@ def find_row(hotel, plate, only_status=None):
         return None
     mask = hotel["RegistrationNumber"].map(norm_plate) == p
     if only_status:
-        mask &= hotel["Status"] == only_status
+        mask &= hotel["Status"].isin(only_status if isinstance(only_status, (tuple, list, set)) else [only_status])
     idx = hotel.index[mask].tolist()
     if not idx:
         return None
-    dep = [i for i in idx if hotel.at[i, "Status"] == ST_DEP]
+    dep = [i for i in idx if hotel.at[i, "Status"] in ST_IN]
     return dep[-1] if dep else idx[-1]
 
 
@@ -661,7 +680,7 @@ def set_days(hrow, tyres=None):
 
 def build_sets(hotel, ty):
     """Tabel cu câte un rând pe set DEPOZITAT (pentru căutare și rapoarte)."""
-    dep = hotel[hotel["Status"] == ST_DEP]
+    dep = hotel[hotel["Status"].isin(ST_IN)]
     groups = {k: g for k, g in ty.groupby("_plate")} if len(ty) else {}
     rows = []
     for _, h in dep.iterrows():
@@ -760,7 +779,7 @@ def describe(rows_df):
 # ---------------------------------------------------------------------------
 def do_swap(plate, tyres, assign_code="", user_note=""):
     hotel, ty = load(HOTEL, fresh=True), load(TY, fresh=True)
-    i = find_row(hotel, plate, only_status=ST_DEP)
+    i = find_row(hotel, plate, only_status=ST_IN)
     if i is None:
         raise BackendError(f"Nu găsesc niciun set DEPOZITAT pentru {plate}.")
     err = validate_tyres(tyres)
@@ -789,7 +808,7 @@ def do_swap(plate, tyres, assign_code="", user_note=""):
 def do_reception(meta, tyres, code, user_note=""):
     hotel, ty = load(HOTEL, fresh=True), load(TY, fresh=True)
     plate = norm_plate(meta["RegistrationNumber"])
-    if find_row(hotel, plate, only_status=ST_DEP) is not None:
+    if find_row(hotel, plate, only_status=ST_IN) is not None:
         raise BackendError(f"Mașina {plate} are deja un set DEPOZITAT. Folosește tab-ul Schimb sezon.")
     if code and code in occupied_map(hotel):
         raise BackendError(f"Poziția {code} tocmai a fost ocupată de {occupied_map(hotel)[code]}. Alege alta.")
@@ -822,7 +841,7 @@ def do_reception(meta, tyres, code, user_note=""):
 
 def do_exit(plate, note=""):
     hotel, ty = load(HOTEL, fresh=True), load(TY, fresh=True)
-    i = find_row(hotel, plate, only_status=ST_DEP)
+    i = find_row(hotel, plate, only_status=ST_IN)
     if i is None:
         raise BackendError(f"Nu găsesc niciun set DEPOZITAT pentru {plate}.")
     code = hotel.at[i, "PositionCode"]
@@ -922,13 +941,15 @@ def clean_rtyres(tyres):
     out = []
     for t in tyres:
         t = {k: ("" if v is None or (isinstance(v, float) and pd.isna(v)) else str(v).strip()) for k, v in t.items()}
-        if not any(t.get(k, "") for k in ("MaterialDescription", "BRAND", "TyreModel", "DOT", "TreadDepth", "Note")):
+        if not any(t.get(k, "") for k in ("MaterialDescription", "BRAND", "TyreModel", "DOT", "TreadDepth", "Note",
+                                          "MaterialCode")):
             continue
         out.append({
             "MaterialDescription": t.get("MaterialDescription", "").upper(), "BRAND": t.get("BRAND", "").upper(),
             "TyreModel": t.get("TyreModel", "").upper(), "ProductGroup": norm_season(t.get("ProductGroup", "")),
             "DOT": t.get("DOT", ""), "TreadDepth": fmt_mm(t["TreadDepth"]) if t.get("TreadDepth", "") else "",
             "Axle": t.get("Axle", "").upper(), "Note": t.get("Note", ""),
+            "MaterialCode": t.get("MaterialCode", ""),
         })
     return out
 
@@ -998,9 +1019,13 @@ def do_leasing_reception(meta, tyres, allow_duplicate=False, source="", log=True
         row[k] = str(meta.get(k, "")).strip()
     row["VIN"] = vin
     row["Condition"] = rimp.norm_condition(meta.get("Condition", ""), "NOI")
+    row["AWB"] = str(meta.get("AWB", "")).strip()
+    nmatch = plan_notice_close([row], force={rid: meta.get("NoticeId", "")} if meta.get("NoticeId") else None,
+                               discrepancy={rid: meta.get("Discrepancy", "")} if meta.get("Discrepancy") else None)
     be = backend()
     be.append_many(RTY, _rty_rows(rid, plate, tyres), RTY_COLS)
     be.append_many(REC, [[row[c] for c in REC_COLS]], REC_COLS)
+    apply_notice_close(nmatch)
     if log:
         be.append_many(IST, [log_row("RECEPTIE_LEASING", plate or f"VIN {vin}",
                                      f"Recepție leasing {rid} ({row['FleetName'] or '-'}, {row['Condition']}"
@@ -1018,7 +1043,7 @@ def do_bulk_leasing_reception(recs, rdate, waiting_loc="", skip_open=True, sourc
     orc = open_receptions(rec)
     open_pl = set(orc["RegistrationNumber"].map(norm_plate)) - {""}
     open_vin = set(orc["VIN"].map(norm_vin)) - {""}
-    rec_rows, rty_rows, logs, created, skipped = [], [], [], [], []
+    rec_rows, rty_rows, logs, created, skipped, rec_dicts = [], [], [], [], [], []
     op = st.session_state.get("operator", "")
     for r in recs:
         plate = norm_plate(r["RegistrationNumber"])
@@ -1038,17 +1063,22 @@ def do_bulk_leasing_reception(recs, rdate, waiting_loc="", skip_open=True, sourc
             row[k] = str(r.get(k, "")).strip()
         row["VIN"] = vin
         row["Condition"] = rimp.norm_condition(r.get("Condition", ""), "NOI")
-        rec_rows.append([row[c] for c in REC_COLS])
+        row["AWB"] = str(r.get("AWB", "")).strip()
+        row["Note"] = str(r.get("Note", "")).strip()
+        rec_dicts.append(row)
         rty_rows += _rty_rows(rid, plate, tyres)
         logs.append(log_row("RECEPTIE_LEASING", plate or f"VIN {vin}", f"Recepție leasing {rid} (import{(': ' + source) if source else ''}): "
                             f"{describe_rtyres(pd.DataFrame(tyres))}"))
         created.append(plate or f"VIN {vin}")
         open_pl.add(plate)
         open_vin.add(vin)
+    nmatch = plan_notice_close(rec_dicts)
+    rec_rows = [[d[c] for c in REC_COLS] for d in rec_dicts]
     be = backend()
     be.append_many(RTY, rty_rows, RTY_COLS)
     be.append_many(REC, rec_rows, REC_COLS)
     be.append_many(IST, logs, IST_COLS)
+    apply_notice_close(nmatch)
     for r in rec_rows:
         d = dict(zip(REC_COLS, r))
         if d["RegistrationNumber"] and (any(d[k] for k in CAR_PEOPLE) or d["VIN"]):
@@ -1122,7 +1152,8 @@ def _new_fisa(rec_row, ftype, note=""):
 
 
 def do_leasing_swap(rec_id, tyres, assign_code="", user_note="", replace_existing=False):
-    """Setul recepționat se montează; anvelopele date jos intră pe raft (DEPOZITAT) + fișă GY de introdus."""
+    """Setul recepționat se montează; anvelopele date jos intră pe raft cu status DECIZIE_GY_ASTEPTATA (GY decide
+    prin email: păstrare 6 luni facturată sau reciclare) + fișă GY pentru montaj."""
     rec, rty = load(REC, fresh=True), load(RTY, fresh=True)
     idx = rec.index[rec["ReceptionId"] == rec_id].tolist()
     if not idx or rec.at[idx[0], "Status"].strip().upper() != RC_OPEN:
@@ -1136,7 +1167,7 @@ def do_leasing_swap(rec_id, tyres, assign_code="", user_note="", replace_existin
     if err:
         raise BackendError(err)
     hotel, ty = load(HOTEL, fresh=True), load(TY, fresh=True)
-    i = find_row(hotel, plate, only_status=ST_DEP)
+    i = find_row(hotel, plate, only_status=ST_IN)
     old = tyres_of(ty, plate)
     occ = occupied_map(hotel)
     if i is not None:
@@ -1155,8 +1186,9 @@ def do_leasing_swap(rec_id, tyres, assign_code="", user_note="", replace_existin
     legacy = old["ServiceProviderStorageLocation"].iloc[0] if len(old) else ""
     new = make_tyre_rows(tpl, tyres, legacy)
     ty = pd.concat([ty[ty["_plate"] != plate], new], ignore_index=True)
-    vals = {"PositionCode": code, "Status": ST_DEP, "StorageDate": today_s(), "ExitDate": "",
-            "Season": "/".join(uniq(new["ProductGroup"]))}
+    vals = {"PositionCode": code, "Status": ST_GYQ, "StorageDate": today_s(), "ExitDate": "",
+            "Season": "/".join(uniq(new["ProductGroup"])), "GYDecision": ST_GYQ, "GYAskedDate": today_s(),
+            "GYDecisionDate": "", "BillingStart": "", "BillingEnd": ""}
     if i is None:
         k = find_row(hotel, plate)
         if k is None:
@@ -1175,7 +1207,8 @@ def do_leasing_swap(rec_id, tyres, assign_code="", user_note="", replace_existin
     if not hotel.at[i, "FleetName"]:
         hotel.at[i, "FleetName"] = r["FleetName"]
     mounted = rec_tyres(rty, rec_id)
-    det = f"Montat setul recepționat {rec_id}: {describe_rtyres(mounted)} || Pus pe raft: {describe(new)}"
+    det = (f"Montat setul recepționat {rec_id}: {describe_rtyres(mounted)} || Pus pe raft (DECIZIE GY AȘTEPTATĂ: "
+           f"păstrare 6 luni sau reciclare): {describe(new)}")
     if len(old):
         det += f" || Set vechi din evidență înlocuit: {describe(old)}"
     worn = [t for t in tyres if is_worn(t["TreadDepth"])]
@@ -1216,6 +1249,239 @@ def do_myway(rec_ids, note=""):
         be.append_many(IST, logs, IST_COLS)
         clear_cache()
     return n
+
+
+# ---------------------------------------------------------------------------
+# Anunțuri curier (Interspace): un email = expediere anunțată, NU dovadă de sosire
+# ---------------------------------------------------------------------------
+def plan_notice_close(rec_rows, force=None, discrepancy=None):
+    """Pentru recepțiile noi (dicturi REC_COLS) găsește anunțurile de SOSIRE deschise (AWB / număr / VIN; anunț
+    trimis înainte de data recepției) și completează AWB / NoticeId pe recepție. Întoarce planul de închidere."""
+    force, discrepancy = force or {}, discrepancy or {}
+    try:
+        nt = load(NOT, fresh=True)
+    except Exception:  # noqa: BLE001 – fără foaia de anunțuri recepția merge oricum
+        return None
+    if not len(nt):
+        return None
+    used, plan = set(), []
+    for row in rec_rows:
+        rid = row["ReceptionId"]
+        if force.get(rid):
+            idx = nt.index[nt["NoticeId"] == force[rid]].tolist()
+        else:
+            idx = [i for i in rimp.match_notices(nt, row["RegistrationNumber"], row["VIN"], row.get("AWB", ""),
+                                                 row["ReceptionDate"]) if i not in used]
+        if not idx:
+            continue
+        i = idx[0]
+        used.add(i)
+        exp = nt.at[i, "ExpectedTyres"]
+        disc = discrepancy.get(rid, "")
+        if exp and str(exp) != str(row["Tyres"]):
+            disc = (disc + "; " if disc else "") + f"anunțate {exp} anv., recepționate {row['Tyres']}"
+        row["NoticeId"] = nt.at[i, "NoticeId"]
+        row["AWB"] = row.get("AWB") or nt.at[i, "AWB"]
+        if not row["VIN"] and nt.at[i, "VIN"]:
+            row["VIN"] = norm_vin(nt.at[i, "VIN"])
+        plan.append((i, rid, row["ReceptionDate"], disc, row["RegistrationNumber"] or f"VIN {row['VIN']}"))
+    return (nt, plan) if plan else None
+
+
+def apply_notice_close(planned):
+    if not planned:
+        return 0
+    nt, plan = planned
+    logs = []
+    for i, rid, rdate, disc, who in plan:
+        nt.at[i, "Status"] = N_REC
+        nt.at[i, "ReceptionId"] = rid
+        nt.at[i, "ClosedDate"] = str(rdate)
+        if disc:
+            nt.at[i, "Note"] = (nt.at[i, "Note"] + " | " if nt.at[i, "Note"] else "") + f"DISCREPANȚĂ: {disc}"
+        logs.append(log_row("ANUNT_RECEPTIONAT", who, f"Anunț curier {nt.at[i, 'NoticeId']} (AWB {nt.at[i, 'AWB']}, "
+                            f"din {nt.at[i, 'NoticeDate']}) închis de recepția {rid}" + (f" · ⚠️ {disc}" if disc else "")))
+    be = backend()
+    be.write(NOT, ensure_schema(nt, NOT_COLS))
+    be.append_many(IST, logs, IST_COLS)
+    clear_cache()
+    return len(plan)
+
+
+def do_notice_status(notice_id, new_status, on_date=None, note=""):
+    """DISCREPANTA / ANULAT / PREDAT pe un anunț (cu notă și dată)."""
+    nt = load(NOT, fresh=True)
+    idx = nt.index[nt["NoticeId"] == notice_id].tolist()
+    if not idx:
+        raise BackendError("Anunțul nu mai există.")
+    j = idx[0]
+    cur = nt.at[j, "Status"]
+    allowed = {N_DISC: N_OPEN_IN, N_CANC: N_OPEN_IN + (N_TODO_OUT,), N_DONE_OUT: (N_TODO_OUT,)}
+    if cur not in allowed.get(new_status, ()):
+        raise BackendError(f"Anunțul este {cur}; nu poate trece în {new_status}.")
+    d = str(on_date or today_s())
+    nt.at[j, "Status"] = new_status
+    if new_status in (N_CANC, N_DONE_OUT):
+        nt.at[j, "ClosedDate"] = d
+    if note:
+        nt.at[j, "Note"] = (nt.at[j, "Note"] + " | " if nt.at[j, "Note"] else "") + f"{d}: {note}"
+    who = nt.at[j, "RegistrationNumber"] or f"VIN {nt.at[j, 'VIN']}"
+    be = backend()
+    be.write(NOT, ensure_schema(nt, NOT_COLS))
+    be.append_many(IST, [log_row("ANUNT_" + new_status, who, f"Anunț curier {notice_id} (AWB {nt.at[j, 'AWB']}): "
+                                 f"{cur} → {new_status}", "", note)], IST_COLS)
+    clear_cache()
+
+
+def do_notice_link(notice_id, rec_id, note=""):
+    """Leagă un anunț de SOSIRE de o recepție deja existentă (ex. creată din import) și îl închide."""
+    nt, rec = load(NOT, fresh=True), load(REC, fresh=True)
+    ni = nt.index[nt["NoticeId"] == notice_id].tolist()
+    ri = rec.index[rec["ReceptionId"] == rec_id].tolist()
+    if not ni or not ri:
+        raise BackendError("Anunțul sau recepția nu mai există.")
+    i, j = ni[0], ri[0]
+    if nt.at[i, "Status"] not in N_OPEN_IN:
+        raise BackendError(f"Anunțul este deja {nt.at[i, 'Status']}.")
+    rec.at[j, "NoticeId"] = notice_id
+    rec.at[j, "AWB"] = rec.at[j, "AWB"] or nt.at[i, "AWB"]
+    if not rec.at[j, "VIN"] and nt.at[i, "VIN"]:
+        rec.at[j, "VIN"] = norm_vin(nt.at[i, "VIN"])
+    exp = nt.at[i, "ExpectedTyres"]
+    disc = note
+    if exp and str(exp) != str(rec.at[j, "Tyres"]):
+        disc = (disc + "; " if disc else "") + f"anunțate {exp} anv., recepționate {rec.at[j, 'Tyres']}"
+    backend().write(REC, ensure_schema(rec, REC_COLS))
+    apply_notice_close((nt, [(i, rec_id, rec.at[j, "ReceptionDate"], disc,
+                             rec.at[j, "RegistrationNumber"] or f"VIN {rec.at[j, 'VIN']}")]))
+
+
+# ---------------------------------------------------------------------------
+# Decizia GY pentru seturile date jos (păstrare 6 luni facturată / reciclare) – niciun set nefacturat
+# ---------------------------------------------------------------------------
+def add_months(d, n=BILL_MONTHS):
+    return (pd.Timestamp(d) + pd.DateOffset(months=n)).date()
+
+
+def gy_waiting_days(h):
+    d = parse_date(h.get("GYAskedDate", "") or h.get("StorageDate", ""))
+    return (pd.Timestamp(date.today()) - d).days if pd.notna(d) else None
+
+
+def storage_expired(hotel):
+    """Seturi păstrate la decizia GY cu perioada de 6 luni încheiată (de refacturat)."""
+    dep = hotel[(hotel["Status"] == ST_DEP) & (hotel["BillingEnd"] != "")]
+    end = dep["BillingEnd"].map(parse_date)
+    return dep[end.notna() & (end <= pd.Timestamp(date.today()))]
+
+
+def gy_email_text(h, tyres):
+    plate = h["RegistrationNumber"]
+    vin = h.get("VIN", "") or ", ".join(uniq(tyres["Chassis Num"])) if len(tyres) else h.get("VIN", "")
+    lines = []
+    for k, (_, t) in enumerate(tyres.iterrows(), 1):
+        lines.append(f"  {k}. {t['MaterialDescription']} – {t['BRAND']} – DOT {t['DOT'] or '-'} – "
+                     f"{t['TreadDepth'] or '-'} mm – {t['QUANTITY'] or 1} buc.")
+    return (f"Subiect: Decizie anvelope demontate – {plate}" + (f" / VIN {vin}" if vin else "") + "\n\n"
+            "Bună ziua,\n\n"
+            f"La mașina {plate}" + (f" (VIN {vin})" if vin else "") + f", flota {h['FleetName'] or '-'}, am montat "
+            f"setul nou trimis de dumneavoastră. Anvelopele demontate ({len(tyres)} buc.) sunt:\n"
+            + "\n".join(lines) + "\n\n"
+            f"Vă rugăm să ne comunicați decizia:\n"
+            f"  • PĂSTRĂM în hotel (depozitare facturată pentru următoarele {BILL_MONTHS} luni), sau\n"
+            f"  • RECICLĂM anvelopele.\n\n"
+            f"Data demontării: {h.get('GYAskedDate', '') or h.get('StorageDate', '') or '-'}.\n\n"
+            "Mulțumim,\nMADYT Autoserv")
+
+
+def do_gy_decision(plates, decision, on_date=None, billable=True, note=""):
+    """decision: 'PASTRAM' -> DEPOZITAT + fișă DEPOZITARE 6 LUNI; 'RECICLAM' -> RECICLAT (arhivat) + fișă
+    RECICLARE dacă e facturabilă. Întoarce numărul de mașini procesate."""
+    hotel, ty = load(HOTEL, fresh=True), load(TY, fresh=True)
+    d = pd.Timestamp(on_date or date.today()).date()
+    ds = d.isoformat()
+    fise, logs, arch, n = [], [], [], 0
+    for plate in plates:
+        i = find_row(hotel, plate, only_status=ST_GYQ)
+        if i is None:
+            continue
+        h = hotel.loc[i]
+        np_ = norm_plate(plate)
+        rows = tyres_of(ty, np_)
+        base = {"ReceptionId": "", "RegistrationNumber": h["RegistrationNumber"], "FleetName": h["FleetName"],
+                "VIN": h["VIN"]}
+        if decision == "PASTRAM":
+            end = add_months(d).isoformat()
+            hotel.at[i, "Status"] = ST_DEP
+            hotel.at[i, "GYDecision"] = "PĂSTRAT"
+            hotel.at[i, "BillingStart"], hotel.at[i, "BillingEnd"] = ds, end
+            f = dict(zip(FISE_COLS, _new_fisa(base, FT_STORE6, note)))
+            f.update({"PeriodStart": ds, "PeriodEnd": end, "Billable": "DA"})
+            fise.append([f[c] for c in FISE_COLS])
+            logs.append(log_row("DECIZIE_GY", h["RegistrationNumber"], f"GY: PĂSTRĂM – depozitare facturată {ds} → "
+                                f"{end}; fișă {FT_STORE6} de introdus în GY. {describe(rows)}", h["PositionCode"], note))
+        else:
+            code = h["PositionCode"]
+            hotel.at[i, "Status"] = ST_RECY
+            hotel.at[i, "GYDecision"] = "RECICLAT"
+            hotel.at[i, "ExitDate"] = ds
+            ty = ty[ty["_plate"] != np_]
+            if len(rows):
+                arch += archive(rows, f"RECICLARE {ds}: decizie GY")
+            if billable:
+                f = dict(zip(FISE_COLS, _new_fisa(base, FT_RECY, note)))
+                f.update({"PeriodStart": ds, "Billable": "DA"})
+                fise.append([f[c] for c in FISE_COLS])
+            logs.append(log_row("DECIZIE_GY", h["RegistrationNumber"], f"GY: RECICLĂM – set arhivat, poziția "
+                                f"{code or '-'} eliberată" + (f"; fișă {FT_RECY} de introdus în GY" if billable else
+                                                              "; reciclare nefacturabilă") + f". {describe(rows)}",
+                                code, note))
+        hotel.at[i, "GYDecisionDate"] = ds
+        n += 1
+    if n:
+        save(hotel=hotel, ty=ty, archive_rows=arch or None, logs=logs)
+        backend().append_many(FISE, fise, FISE_COLS) if fise else None
+        clear_cache()
+    return n
+
+
+def do_rebill(plates, note=""):
+    """Perioada de 6 luni s-a încheiat și setul e tot în hotel: fișă nouă DEPOZITARE 6 LUNI pentru perioada următoare."""
+    hotel = load(HOTEL, fresh=True)
+    exp = storage_expired(hotel)
+    fise, logs, n = [], [], 0
+    for plate in plates:
+        sub = exp[exp["RegistrationNumber"].map(norm_plate) == norm_plate(plate)]
+        if not len(sub):
+            continue
+        i = sub.index[-1]
+        start = parse_date(hotel.at[i, "BillingEnd"]).date()
+        end = add_months(start)
+        hotel.at[i, "BillingStart"], hotel.at[i, "BillingEnd"] = start.isoformat(), end.isoformat()
+        f = dict(zip(FISE_COLS, _new_fisa({"RegistrationNumber": hotel.at[i, "RegistrationNumber"],
+                                            "FleetName": hotel.at[i, "FleetName"], "VIN": hotel.at[i, "VIN"]},
+                                           FT_STORE6, note or "refacturare")))
+        f.update({"PeriodStart": start.isoformat(), "PeriodEnd": end.isoformat(), "Billable": "DA"})
+        fise.append([f[c] for c in FISE_COLS])
+        logs.append(log_row("REFACTURARE_DEPOZITARE", hotel.at[i, "RegistrationNumber"],
+                            f"Depozitare refacturată {start} → {end}", hotel.at[i, "PositionCode"], note))
+        n += 1
+    if n:
+        be = backend()
+        be.write(HOTEL, ensure_schema(hotel, HOTEL_COLS))
+        be.append_many(FISE, fise, FISE_COLS)
+        be.append_many(IST, logs, IST_COLS)
+        clear_cache()
+    return n
+
+
+def do_fisa_billable(fisa_id, billable):
+    fise = load(FISE, fresh=True)
+    idx = fise.index[fise["FisaId"] == fisa_id].tolist()
+    if idx:
+        fise.at[idx[0], "Billable"] = "DA" if billable else "NU"
+        backend().write(FISE, ensure_schema(fise, FISE_COLS))
+        clear_cache()
 
 
 def do_fisa_status(fisa_ids, new_status, on_date=None, gy_ref="", note=""):
@@ -1495,7 +1761,7 @@ def plan_gy_import(hotel, ty, imp):
         i = find_row(hotel, plate)
         if i is None:
             new.append(plate)
-        elif hotel.at[i, "Status"] != ST_DEP:
+        elif hotel.at[i, "Status"] not in ST_IN:
             ridicat.append(plate)
         elif _set_key(g) != _set_key(groups.get(plate, ty.iloc[0:0])):
             changed.append(plate)
@@ -1664,7 +1930,8 @@ def people_line(d):
 
 
 RTY_EDIT = {"MaterialDescription": "Dimensiune *", "BRAND": "Marcă", "TyreModel": "Model", "ProductGroup": "Sezon",
-            "DOT": "DOT", "TreadDepth": "Profil (mm)", "Axle": "Poziție pe mașină", "Note": "Observații"}
+            "DOT": "DOT", "TreadDepth": "Profil (mm)", "Axle": "Poziție pe mașină", "Note": "Observații",
+            "MaterialCode": "Cod material GY"}
 
 
 def rtyres_editor(key, rows=None, n_default=4):
@@ -1726,7 +1993,7 @@ def leasing_swap_panel(np_, orec, i):
     if age is not None and age > RC_DAYS:
         st.warning(f"Setul așteaptă de {age} zile (peste {RC_DAYS}) – la sfârșit de sezon intră în My Way ca EXTRA DEPOZITARE.")
     rtyres_table(rec_tyres(rty_df, rid))
-    has_dep = i is not None and hotel_df.at[i, "Status"] == ST_DEP
+    has_dep = i is not None and hotel_df.at[i, "Status"] in ST_IN
     replace = False
     assign = ""
     if has_dep:
@@ -1751,7 +2018,7 @@ def leasing_swap_panel(np_, orec, i):
                     horizontal=True)
     rs = mt["ProductGroup"].iloc[0] if len(mt) else r.get("Season", "")
     with st.form(f"ls_swap_form_{np_}", clear_on_submit=True):
-        st.markdown("**Setul dat jos de pe mașină (intră pe raft, DEPOZITAT)**")
+        st.markdown("**Setul dat jos de pe mașină (intră pe raft, DECIZIE GY AȘTEPTATĂ: păstrăm 6 luni / reciclăm)**")
         collect = tyre_entry(f"ls_{np_}", {"ProductGroup": other_season(rs)}, n, mode.startswith("Pe fiecare"))
         unote = st.text_input("Notă operator (opțional)", key=f"ls_note_{np_}")
         ok = st.form_submit_button("✅ Montat setul recepționat", type="primary")
@@ -1759,8 +2026,9 @@ def leasing_swap_panel(np_, orec, i):
         try:
             tyres = collect()
             code, worn = do_leasing_swap(rid, tyres, assign, unote.strip(), replace)
-            flash(f"✅ Setul recepționat a fost montat pe {np_}. Setul dat jos ({len(tyres)} anv.) este DEPOZITAT la "
-                  f"{code or '(fără poziție)'}. Fișa GY (schimb + depozitare) este în lista «De introdus în GY».")
+            flash(f"✅ Setul recepționat a fost montat pe {np_}. Setul dat jos ({len(tyres)} anv.) e pus la "
+                  f"{code or '(fără poziție)'} cu status DECIZIE GY AȘTEPTATĂ: trimite emailul din tab-ul "
+                  "«📨 De întrebat GY» (păstrăm 6 luni / reciclăm). Fișa GY pentru montaj e în «De introdus în GY».")
             if worn:
                 flash(f"⚠️ {worn} anvelope din setul dat jos au profil sub {CFG['worn_mm']:g} mm.", "warning")
             st.rerun()
@@ -1791,7 +2059,7 @@ def car_status_card(query, key="card"):
         st.markdown(f"### 🚗 {plate or '(fără număr auto)'}" + (f"  ·  VIN {', '.join(vins)}" if vins else ""))
         st.markdown(f"**Flotă:** {fleet or '-'}" + (f"  ·  {people_line(ppl)}" if ppl and people_line(ppl) else ""))
         c1, c2 = st.columns(2)
-        if h is not None and h["Status"] == ST_DEP:
+        if h is not None and h["Status"] in ST_IN:
             rows = tyres_of(ty_df, plate)
             seas = "/".join(SEASON_RO.get(s, s) for s in uniq(rows["ProductGroup"])) if len(rows) else SEASON_RO.get(h["Season"], h["Season"])
             c1.success(f"**Are anvelope în hotel: DA**  \nPoziție: {h['PositionCode'] or ('fără R-N-P' + (' – loc. veche ' + h['LegacyLocation'] if h['LegacyLocation'] else ''))}  \n"
@@ -1854,6 +2122,7 @@ try:
     rec_df = load(REC)
     rty_df = load(RTY)
     fise_df = load(FISE)
+    nt_df = load(NOT)
 except BackendError as e:
     st.error(f"Nu mă pot conecta la baza de date. {e}")
     st.info("Vrei doar să testezi aplicația? Pornește-o în modul DEMO: pune `demo_mode = true` în secrets "
@@ -1889,10 +2158,21 @@ _mc[0].metric("Recepții leasing deschise", len(_open))
 _mc[1].metric(f"De introdus în My Way (>{RC_DAYS} zile)", _old)
 for _k, _s in enumerate(F_STATUSES):
     _mc[2 + _k].metric(f"Fișe GY: {F_RO[_s]}", int(_fst.get(_s, 0)))
+_gyq = hotel_df[hotel_df["Status"] == ST_GYQ]
+_gyq_old = sum(1 for _, h in _gyq.iterrows() if (gy_waiting_days(h) or 0) > GYQ_DAYS)
+_exp = storage_expired(hotel_df)
+_nin = nt_df[(nt_df["Direction"] == N_IN) & nt_df["Status"].isin(N_OPEN_IN)]
+_nout = nt_df[(nt_df["Direction"] == N_OUT) & (nt_df["Status"] == N_TODO_OUT)]
+_mc2 = st.columns(5)
+_mc2[0].metric("De întrebat GY (set demontat)", len(_gyq))
+_mc2[1].metric(f"🔴 Fără răspuns GY > {GYQ_DAYS} zile", _gyq_old)
+_mc2[2].metric(f"🔴 Depozitare {BILL_MONTHS} luni expirată (de refacturat)", len(_exp))
+_mc2[3].metric("Sosiri anunțate curier (în drum)", len(_nin))
+_mc2[4].metric("De predat curierului", len(_nout))
 
 tabs = st.tabs(["🔁 Schimb sezon", "🔍 Căutare stoc", "📦 Recepție client nou", "🚚 Recepție leasing",
                 "🚪 Ieșire din hotel", "🗄️ Rafturi", "📊 Rapoarte", "🧾 Fișe GY", "📅 Sfârșit sezon / My Way",
-                "⚙️ Administrare poziții", "🔄 GY Fleet"])
+                "⚙️ Administrare poziții", "🔄 GY Fleet", "📬 Curier: sosiri / predări", "📨 De întrebat GY"])
 
 # --- 1. Schimb sezon --------------------------------------------------------
 with tabs[0]:
@@ -1910,7 +2190,7 @@ with tabs[0]:
         show_regular = True
         if len(orec):
             leasing_swap_panel(np_, orec, i)
-            if i is not None and hotel_df.at[i, "Status"] == ST_DEP:
+            if i is not None and hotel_df.at[i, "Status"] in ST_IN:
                 st.divider()
                 show_regular = st.checkbox("Arată schimbul obișnuit (montez setul de pe raft, nu cel recepționat)",
                                            key=f"swap_regular_{np_}")
@@ -1918,7 +2198,7 @@ with tabs[0]:
             if not len(orec) and not rs_["by"]:
                 st.warning(f"Mașina {np_} nu are niciun set în hotel. Folosește tab-ul **Recepție client nou** "
                            "(sau **Recepție leasing** dacă setul a venit de la GY).")
-        elif hotel_df.at[i, "Status"] != ST_DEP:
+        elif hotel_df.at[i, "Status"] not in ST_IN:
             if not len(orec):
                 st.warning(f"Setul mașinii {np_} a fost RIDICAT pe {hotel_df.at[i, 'ExitDate'] or '-'}. "
                            "Pentru o nouă depozitare folosește tab-ul **Recepție client nou**.")
@@ -2259,6 +2539,11 @@ with tabs[3]:
                         rv = resolve_car(r_["VIN"])
                         if len(rv["plates"]) == 1:
                             r_["RegistrationNumber"] = rv["plates"][0]
+                rep_i = rimp.enrich_plan(recs_i, rimp.ref_index([("Hotel", hotel_df), ("Hotel_Anvelope", ty_df)]),
+                                         nt_df.to_dict("records"))
+                note_i = st.text_input("Notă pe recepții (opțional)", key="lr_imp_note")
+                for r_ in recs_i:
+                    r_["Note"] = note_i.strip()
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Mașini (recepții)", len(recs_i))
                 c2.metric("Anvelope", sum(len(r["tyres"]) for r in recs_i))
@@ -2268,6 +2553,9 @@ with tabs[3]:
                         st.markdown("\n".join(f"- {w}" for w in warns_i))
                 if recs_i:
                     show_df(rimp.plan_table(recs_i), rename=False)
+                    with st.expander("🔎 Comparație cu evidențele (Hotel, Hotel_Anvelope, anunțuri curier)"):
+                        st.caption("Flota / VIN / utilizatorul se completează din evidențe doar unde lipsesc în fișier.")
+                        show_df(pd.DataFrame(rep_i), rename=False)
                     pl_i = st.selectbox("Vezi anvelopele unei mașini", list(range(len(recs_i))), key="lr_imp_view",
                                         format_func=lambda k: recs_i[k]["RegistrationNumber"] or "VIN " + recs_i[k]["VIN"])
                     show_df(pd.DataFrame(recs_i[pl_i]["tyres"]))
@@ -2289,7 +2577,7 @@ with tabs[4]:
     st.header("Ieșire din hotel (clientul își ia setul definitiv)")
     plate_e = st.text_input("Număr auto", key="exit_plate").strip()
     if plate_e:
-        i = find_row(hotel_df, plate_e, only_status=ST_DEP)
+        i = find_row(hotel_df, plate_e, only_status=ST_IN)
         if i is None:
             st.warning("Nu există set DEPOZITAT pentru acest număr.")
         else:
@@ -2351,7 +2639,7 @@ with tabs[5]:
         st.subheader("Poziții libere")
         fr = sort_positions(pv[~pv["Ocupat"]])
         show_df(fr[["PositionCode", "Flota"]].rename(columns={"PositionCode": "Poziție"}), rename=False)
-    nop = hotel_df[(hotel_df["Status"] == ST_DEP) & (hotel_df["PositionCode"] == "")]
+    nop = hotel_df[hotel_df["Status"].isin(ST_IN) & (hotel_df["PositionCode"] == "")]
     if len(nop):
         st.subheader(f"Seturi fără poziție R-N-P ({len(nop)}) – pe locații vechi GY")
         lg = nop.assign(L=nop["LegacyLocation"].replace("", "(necompletat)")).groupby("L").size().reset_index(name="Seturi")
@@ -2429,7 +2717,8 @@ with tabs[7]:
             st.info("Nicio fișă cu acest status.")
         else:
             cols_f = ["FisaId", "RegistrationNumber", "FleetName", "UserName", "ClientCompany", "Type", "CreatedDate",
-                      "SentDate", "ApprovedDate", "RejectedDate", "InvoicedDate", "GYRef", "Note"]
+                      "PeriodStart", "PeriodEnd", "Billable", "SentDate", "ApprovedDate", "RejectedDate",
+                      "InvoicedDate", "GYRef", "Note"]
             ed = sub[cols_f].copy()
             ed.insert(0, "Selectează", False)
             ed = ed.rename(columns={c: DISPLAY.get(c, c) for c in cols_f})
@@ -2639,3 +2928,205 @@ with tabs[10]:
     except Exception as e:  # noqa: BLE001
         c1.error(f"Nu pot genera fișierul Excel: {e}")
     c2.download_button("⬇️ CSV", gy_export_csv(vals), f"hotel_gyfleet_{stamp}.csv", "text/csv", key="gy_csv")
+
+# --- Curier: sosiri anunțate / predări ------------------------------------------
+with tabs[11]:
+    st.header("Curier – sosiri anunțate și predări")
+    st.caption("Emailurile Interspace anunță doar că setul a fost EXPEDIAT prin curier (AWB) – nu că a ajuns. "
+               "Setul devine RECEPTIONAT doar după ce l-ați primit fizic: «Confirmă recepția». O recepție creată "
+               "manual sau din import cu același număr auto / VIN / AWB închide automat anunțul.")
+    sec_c = st.radio("Secțiune", ["📥 Sosiri anunțate (în drum)", "📤 De predat curierului", "📜 Toate anunțurile"],
+                     horizontal=True, key="nt_sec", label_visibility="collapsed")
+    nt_v = nt_df.copy()
+    nt_v["Zile"] = nt_v["NoticeDate"].map(lambda d: (pd.Timestamp(date.today()) - parse_date(str(d)[:10])).days
+                                          if pd.notna(parse_date(str(d)[:10])) else None)
+    ncols = ["NoticeDate", "Zile", "Status", "RegistrationNumber", "VIN", "AWB", "Counterparty", "ExpectedTyres",
+             "Season", "Description", "Note"]
+    if sec_c.startswith("📥"):
+        inc = nt_v[(nt_v["Direction"] == N_IN) & nt_v["Status"].isin(N_OPEN_IN)].sort_values("NoticeDate")
+        if inc.empty:
+            st.success("Nu există seturi anunțate care încă n-au ajuns.")
+        else:
+            show_df(inc[ncols])
+            nid = st.selectbox("Anunț", inc["NoticeId"].tolist(), key="nt_pick",
+                               format_func=lambda x: (lambda n: f"{n['RegistrationNumber'] or 'VIN ' + n['VIN']} · AWB "
+                                                      f"{n['AWB']} · {n['NoticeDate'][:10]} · {n['ExpectedTyres']} anv.")
+                               (inc.set_index("NoticeId").loc[x]))
+            n_ = inc.set_index("NoticeId").loc[nid].to_dict()
+            n_["NoticeId"] = nid
+            ident = n_["RegistrationNumber"] or n_["VIN"]
+            rs_n = resolve_car(ident) if ident else {"plates": [], "vins": []}
+            plate_n = n_["RegistrationNumber"] or (rs_n["plates"][0] if len(rs_n.get("plates", [])) == 1 else "")
+            hi_n = find_row(hotel_df, plate_n) if plate_n else None
+            ex_open = open_receptions(rec_df, plate_n or None, n_["VIN"])
+            if len(ex_open):
+                st.info(f"Există deja {len(ex_open)} recepție(i) deschisă(e) pentru această mașină. Dacă e același set, "
+                        "leagă anunțul de ea:")
+                c1, c2 = st.columns([3, 1])
+                rid_l = c1.selectbox("Recepție existentă", ex_open["ReceptionId"].tolist(), key=f"nt_link_{nid}",
+                                     format_func=lambda x: f"{x} – {ex_open.set_index('ReceptionId').at[x, 'ReceptionDate']}"
+                                     f" – {ex_open.set_index('ReceptionId').at[x, 'Tyres']} anv.")
+                if c2.button("🔗 Leagă și închide", key=f"nt_link_go_{nid}"):
+                    try:
+                        do_notice_link(nid, rid_l)
+                        flash(f"✅ Anunțul AWB {n_['AWB']} a fost legat de recepția {rid_l}.")
+                        st.rerun()
+                    except BackendError as e:
+                        st.error(str(e))
+            st.markdown("**✅ Confirmă recepția** (setul a ajuns fizic; verifică și corectează anvelopele)")
+            c1, c2, c3 = st.columns(3)
+            pl_c = c1.text_input("Număr auto", value=plate_n, key=f"nt_pl_{nid}")
+            vin_c = c2.text_input("VIN", value=n_["VIN"] or (hotel_df.at[hi_n, "VIN"] if hi_n is not None else ""),
+                                  key=f"nt_vin_{nid}")
+            fl_opts = [""] + all_fleets(hotel_df, rec_df, pos_df)
+            fl_def = hotel_df.at[hi_n, "FleetName"] if hi_n is not None else ""
+            fl_c = c3.selectbox("Flotă", fl_opts, index=fl_opts.index(fl_def) if fl_def in fl_opts else 0,
+                                key=f"nt_fl_{nid}")
+            c1, c2, c3 = st.columns(3)
+            dt_c = c1.date_input("Data recepției (reală)", value=date.today(), format="DD.MM.YYYY", key=f"nt_dt_{nid}")
+            cd_c = c2.radio("Anvelope", rimp.CONDITIONS, horizontal=True, key=f"nt_cd_{nid}")
+            wl_c = c3.text_input("Locație de așteptare", key=f"nt_wl_{nid}")
+            collect_n = rtyres_editor(f"nt_ed_{nid}", rimp.notice_tyres(n_) or None)
+            disc_c = st.text_input("Discrepanță față de anunț (opțional – ex. a venit altă dimensiune / lipsesc anvelope)",
+                                   key=f"nt_disc_{nid}")
+            if st.button("✅ Confirmă recepția", type="primary", key=f"nt_ok_{nid}"):
+                try:
+                    rid_n = do_leasing_reception(
+                        {"RegistrationNumber": pl_c, "VIN": vin_c, "FleetName": fl_c, "ReceptionDate": dt_c,
+                         "WaitingLocation": wl_c, "Condition": cd_c, "AWB": n_["AWB"], "NoticeId": nid,
+                         "Discrepancy": disc_c.strip(),
+                         "Note": f"Sosit prin curier AWB {n_['AWB']}" + (f" · DISCREPANȚĂ: {disc_c.strip()}" if disc_c.strip() else "")},
+                        collect_n(), allow_duplicate=True, source=f"anunț curier {n_['AWB']}")
+                    flash(f"✅ Recepție {rid_n} creată; anunțul AWB {n_['AWB']} este RECEPTIONAT.")
+                    st.rerun()
+                except BackendError as e:
+                    st.error(str(e))
+            with st.expander("⚠️ Discrepanță / anulare fără recepție"):
+                with st.form(f"nt_st_{nid}"):
+                    ch_s = st.radio("Acțiune", [N_DISC, N_CANC], horizontal=True,
+                                    format_func=lambda x: {"DISCREPANTA": "Notează discrepanță (rămâne deschis)",
+                                                           "ANULAT": "Anulat (nu mai vine)"}[x])
+                    nt_s = st.text_input("Notă (obligatorie)")
+                    ok_s = st.form_submit_button("Salvează")
+                if ok_s:
+                    if not nt_s.strip():
+                        st.error("Scrie nota.")
+                    else:
+                        try:
+                            do_notice_status(nid, ch_s, None, nt_s.strip())
+                            flash("✅ Anunț actualizat.")
+                            st.rerun()
+                        except BackendError as e:
+                            st.error(str(e))
+    elif sec_c.startswith("📤"):
+        out_ = nt_v[(nt_v["Direction"] == N_OUT) & (nt_v["Status"] == N_TODO_OUT)].sort_values("NoticeDate")
+        if out_.empty:
+            st.success("Nu există seturi de predat curierului.")
+        else:
+            out_ = out_.copy()
+            out_["În hotel"] = [ST_RO.get(hotel_df.at[k, "Status"], hotel_df.at[k, "Status"]) + (f" @ {hotel_df.at[k, 'PositionCode']}" if hotel_df.at[k, "PositionCode"] else "")
+                                if (k := find_row(hotel_df, p)) is not None else "-" for p in out_["RegistrationNumber"]]
+            show_df(out_[["NoticeDate", "Zile", "RegistrationNumber", "AWB", "Counterparty", "ExpectedTyres", "Season",
+                          "Description", "În hotel", "Note"]])
+            oid = st.selectbox("Expediere", out_["NoticeId"].tolist(), key="nt_out_pick",
+                               format_func=lambda x: (lambda n: f"{n['RegistrationNumber']} · AWB {n['AWB']} → "
+                                                      f"{n['Counterparty']}")(out_.set_index("NoticeId").loc[x]))
+            o_ = out_.set_index("NoticeId").loc[oid]
+            ho = find_row(hotel_df, o_["RegistrationNumber"], only_status=ST_IN)
+            with st.form(f"nt_out_{oid}"):
+                c1, c2 = st.columns(2)
+                dt_o = c1.date_input("Data predării", value=date.today(), format="DD.MM.YYYY")
+                no_o = c2.text_input("Notă (opțional)")
+                ex_o = st.checkbox("Setul pleacă definitiv din hotel – scoate-l din evidență (Ieșire)", value=False,
+                                   disabled=ho is None)
+                ok_o = st.form_submit_button("🚚 Predat curierului", type="primary")
+            if ok_o:
+                try:
+                    do_notice_status(oid, N_DONE_OUT, dt_o, no_o.strip())
+                    if ex_o and ho is not None:
+                        do_exit(o_["RegistrationNumber"], f"Predat curierului AWB {o_['AWB']} → {o_['Counterparty']}")
+                    flash(f"✅ AWB {o_['AWB']} predat curierului.")
+                    st.rerun()
+                except BackendError as e:
+                    st.error(str(e))
+    else:
+        if nt_v.empty:
+            st.info("Nu există anunțuri încărcate.")
+        else:
+            show_df(nt_v[["NoticeDate", "Direction", "Status"] + ncols[3:] + ["ReceptionId", "ClosedDate"]]
+                    .sort_values("NoticeDate", ascending=False))
+            st.download_button("⬇️ Descarcă (CSV)", nt_v.to_csv(index=False).encode("utf-8-sig"), "anunturi_curier.csv",
+                               "text/csv")
+
+# --- De întrebat GY: decizia pentru seturile demontate --------------------------
+with tabs[12]:
+    st.header("De întrebat GY – anvelope demontate")
+    st.caption(f"După montarea unui set de leasing, anvelopele date jos așteaptă decizia GY: PĂSTRĂM (depozitare "
+               f"facturată {BILL_MONTHS} luni) sau RECICLĂM. Copiază textul emailului și trimite-l tu către GY; "
+               "aplicația nu trimite emailuri. Scop: niciun set nefacturat.")
+    q_ = hotel_df[hotel_df["Status"] == ST_GYQ].copy()
+    c1, c2, c3 = st.columns(3)
+    q_["Zile"] = [gy_waiting_days(h) for _, h in q_.iterrows()]
+    c1.metric("Așteaptă decizia GY", len(q_))
+    c2.metric(f"🔴 Peste {GYQ_DAYS} zile", int((q_["Zile"].fillna(0) > GYQ_DAYS).sum()))
+    exp_ = storage_expired(hotel_df)
+    c3.metric(f"🔴 Depozitări {BILL_MONTHS} luni expirate", len(exp_))
+    if q_.empty:
+        st.success("Niciun set demontat nu așteaptă decizia GY.")
+    else:
+        q_ = q_.sort_values("Zile", ascending=False, na_position="last")
+        show_df(pd.DataFrame({"": ["🔴" if (z or 0) > GYQ_DAYS else "" for z in q_["Zile"]],
+                              "Număr auto": q_["RegistrationNumber"], "VIN": q_["VIN"], "Flotă": q_["FleetName"],
+                              "Poziție": q_["PositionCode"], "Întrebat GY": q_["GYAskedDate"], "Zile": q_["Zile"],
+                              "Sezon": q_["Season"]}), rename=False)
+        pq = st.selectbox("Mașina", q_["RegistrationNumber"].tolist(), key="gyq_pick")
+        hq = q_[q_["RegistrationNumber"] == pq].iloc[-1]
+        if (gy_waiting_days(hq) or 0) > GYQ_DAYS:
+            st.error(f"🔴 Decizia GY se așteaptă de {gy_waiting_days(hq)} zile – revino cu emailul.")
+        st.markdown("**Text email pentru GY (copiază):**")
+        st.code(gy_email_text(hq, tyres_of(ty_df, pq)), language=None)
+        with st.form(f"gyq_form_{norm_plate(pq)}"):
+            c1, c2 = st.columns(2)
+            dec = c1.radio("Răspuns GY", ["PASTRAM", "RECICLAM"], horizontal=True,
+                           format_func=lambda x: {"PASTRAM": f"GY: păstrăm ({BILL_MONTHS} luni)",
+                                                  "RECICLAM": "GY: reciclăm"}[x])
+            dt_q = c2.date_input("Data deciziei / început facturare", value=date.today(), format="DD.MM.YYYY")
+            bill_q = st.checkbox("Reciclarea se facturează (creează fișă GY RECICLARE)", value=True)
+            nt_q = st.text_input("Notă (ex. nr. email / persoana GY)")
+            ok_q = st.form_submit_button("💾 Salvează decizia", type="primary")
+        if ok_q:
+            try:
+                n_q = do_gy_decision([pq], dec, dt_q, bill_q, nt_q.strip())
+                if dec == "PASTRAM":
+                    flash(f"✅ {pq}: DEPOZITAT; fișa «{FT_STORE6}» ({dt_q} → {add_months(dt_q)}) este în «De introdus în GY».")
+                else:
+                    flash(f"✅ {pq}: RECICLAT, setul a fost arhivat și poziția eliberată."
+                          + (f" Fișa «{FT_RECY}» este în «De introdus în GY»." if bill_q else ""))
+                if not n_q:
+                    flash("Setul nu mai așteaptă decizia (poate a fost deja procesat).", "warning")
+                st.rerun()
+            except BackendError as e:
+                st.error(str(e))
+    st.subheader(f"🔁 Depozitări de {BILL_MONTHS} luni expirate – de refacturat")
+    if exp_.empty:
+        st.caption("Nicio perioadă de depozitare expirată.")
+    else:
+        show_df(exp_[["RegistrationNumber", "FleetName", "PositionCode", "BillingStart", "BillingEnd", "Season"]])
+        sel_e = st.multiselect("Mașini de refacturat", exp_["RegistrationNumber"].tolist(),
+                               default=exp_["RegistrationNumber"].tolist(), key="gy_rebill_sel")
+        if st.button(f"🧾 Creează fișe {FT_STORE6} pentru perioada următoare ({len(sel_e)})", key="gy_rebill",
+                     disabled=not sel_e):
+            n_r = do_rebill(sel_e)
+            flash(f"✅ {n_r} fișe de refacturare create în «De introdus în GY».")
+            st.rerun()
+    rf_ = fise_df[(fise_df["Type"] == FT_RECY) & (fise_df["Status"].str.upper().isin(["", F_TODO]))]
+    if len(rf_):
+        with st.expander(f"Fișe de reciclare de introdus ({len(rf_)}) – marcaj facturabil"):
+            show_df(rf_[["FisaId", "RegistrationNumber", "FleetName", "CreatedDate", "Billable", "Note"]])
+            fr = st.selectbox("Fișa", rf_["FisaId"].tolist(), key="gy_rf_pick")
+            cur_b = rf_.set_index("FisaId").at[fr, "Billable"] != "NU"
+            nb = st.checkbox("Facturabilă", value=cur_b, key=f"gy_rf_b_{fr}")
+            if nb != cur_b and st.button("💾 Salvează marcajul", key=f"gy_rf_go_{fr}"):
+                do_fisa_billable(fr, nb)
+                flash("✅ Marcaj salvat.")
+                st.rerun()

@@ -45,7 +45,7 @@ def test_flow():
     at = mk(tmp)
     src = f"{tmp}/Inventar GY.csv"
     src_md5 = md5(src)
-    assert len(at.tabs) == 11
+    assert len(at.tabs) == 13
     assert any("12 anvelope, 3 mașini" in i.value and "neatinsă" in i.value for i in at.info), [i.value for i in at.info]
     ty = csv(tmp, "Hotel_Anvelope")
     assert len(ty) == 12 and "CITY_2" in ty.columns and set(ty.CITY_2) == {"Buftea, Ilfov"}
@@ -205,7 +205,7 @@ def test_leasing_ui_swap_myway_fise():
     click(at, "✅ Montat setul recepționat")
     assert not errs(at), errs(at)
     h = csv(tmp, "Hotel").set_index("RegistrationNumber").loc["B77TST"]
-    assert h.Status == "DEPOZITAT" and h.UserName == "Ana" and h.ClientCompany == "ACME"
+    assert h.Status == "DECIZIE_GY_ASTEPTATA" and h.UserName == "Ana" and h.ClientCompany == "ACME"
     assert csv(tmp, "Receptii").set_index("ReceptionId").loc["RC1-B77TST"].Status == "SCHIMBAT"
     # My Way pentru setul vechi
     at.selectbox(key="mw_one").set_value("RC2-B88TST").run()

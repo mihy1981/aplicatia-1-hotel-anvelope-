@@ -4,9 +4,15 @@
 Utilizare:
     python scripts/import_receptie.py fisier.xlsx --dry-run
     python scripts/import_receptie.py fisier.xlsx --fleet HERTZ --date 2026-11-03 [--condition FOLOSITE]
+        [--note "Import fișier ..."] [--ref inventar_vechi.xlsx]
+
+Flota / VIN / utilizator / firmă se completează (doar dacă lipsesc) din Hotel, Hotel_Anvelope, 'Inventar GY'
+(citit, NICIODATĂ scris) și din fișierele --ref; se afișează un tabel de comparație. Recepțiile se potrivesc
+automat cu anunțurile de curier (Anunturi_Curier) după AWB / număr / VIN și le închid (RECEPTIONAT).
 
 Credențiale: MADYT_SA_FILE (implicit /workspace/.secrets/sa.json). Sheet: --sheet / MADYT_SPREADSHEET_ID.
-Scrie DOAR în tab-urile Receptii, Receptii_Anvelope, Istoric (niciodată în 'Inventar GY').
+Scrie DOAR în tab-urile Receptii, Receptii_Anvelope, Istoric, Anunturi_Curier (niciodată în 'Inventar GY'
+sau Hotel).
 """
 import argparse
 import os
@@ -17,9 +23,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import receptii_import as rimp  # noqa: E402
 
 DEFAULT_SHEET = "1qs5DuQ4--vT0Tr91sqH2om4B1dHM_-IyNLnkcvL5leA"
-REC, RTY, IST, HOTEL = "Receptii", "Receptii_Anvelope", "Istoric", "Hotel"
+REC, RTY, IST, HOTEL, TY, SRC = "Receptii", "Receptii_Anvelope", "Istoric", "Hotel", "Hotel_Anvelope", "Inventar GY"
+NOT = rimp.NOT_TAB
 IST_COLS = ["Timestamp", "RegistrationNumber", "Action", "Details", "PositionCode", "UserNote", "Operator"]
-ALLOWED = {REC: rimp.REC_COLS, RTY: rimp.RTY_COLS, IST: IST_COLS}
+ALLOWED = {REC: rimp.REC_COLS, RTY: rimp.RTY_COLS, IST: IST_COLS, NOT: rimp.NOT_COLS}
+assert SRC not in ALLOWED and HOTEL not in ALLOWED
 
 
 def open_sheet(sheet_id):
@@ -41,7 +49,7 @@ def ws_records(sh, name):
 
 def ensure_ws(sh, name, cols):
     """Creează tab-ul dacă lipsește; adaugă la final coloanele lipsă. Întoarce (ws, header)."""
-    assert name in ALLOWED, name
+    assert name in ALLOWED and name != SRC, name
     import gspread
     try:
         ws = sh.worksheet(name)
@@ -65,6 +73,33 @@ def append(sh, name, rows):
     ws.append_rows([[r.get(c, "") for c in head] for r in rows], value_input_option="RAW")
 
 
+def read_ref(path):
+    """Fișier de referință (ex. inventar vechi): toate foile care au coloana RegistrationNumber."""
+    import pandas as pd
+    if path.lower().endswith((".xlsx", ".xls")):
+        frames = [d for d in pd.read_excel(path, sheet_name=None, dtype=str).values() if "RegistrationNumber" in d]
+        return pd.concat(frames, ignore_index=True).fillna("") if frames else pd.DataFrame()
+    with open(path, "rb") as f:
+        return rimp.read_file(path, f.read())
+
+
+def close_notices(sh, notices, plan):
+    """plan: [(index în notices, ReceptionId, data, discrepanță)] -> actualizează rândurile în Anunturi_Curier."""
+    if not plan:
+        return
+    ws, head = ensure_ws(sh, NOT, rimp.NOT_COLS)
+    import gspread.utils as gu
+    cells = []
+    for i, rid, rdate, disc in plan:
+        n = notices[i]
+        note = n.get("Note", "")
+        if disc:
+            note = (note + " | " if note else "") + f"DISCREPANȚĂ: {disc}"
+        for col, val in (("Status", rimp.N_REC), ("ReceptionId", rid), ("ClosedDate", rdate), ("Note", note)):
+            cells.append({"range": gu.rowcol_to_a1(n["_row"], head.index(col) + 1), "values": [[val]]})
+    ws.batch_update(cells, value_input_option="RAW")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Import recepții leasing (Excel/CSV)")
     ap.add_argument("file")
@@ -76,6 +111,8 @@ def main(argv=None):
     ap.add_argument("--location", default="", help="locație de așteptare")
     ap.add_argument("--allow-duplicates", action="store_true", help="importă și mașinile cu recepție deschisă")
     ap.add_argument("--offline", action="store_true", help="dry-run fără a citi Google Sheet")
+    ap.add_argument("--note", default="", help="notă pe fiecare recepție")
+    ap.add_argument("--ref", action="append", default=[], help="fișier de referință (inventar vechi), repetabil")
     a = ap.parse_args(argv)
 
     with open(a.file, "rb") as f:
@@ -87,33 +124,58 @@ def main(argv=None):
         print("EROARE: lipsesc coloanele obligatorii:", ", ".join(miss))
         return 2
 
-    sh, open_pl, open_vin, vin2plate = None, set(), set(), {}
+    sh, open_pl, open_vin, vin2plate, notices, frames = None, set(), set(), {}, [], []
+    import pandas as pd
     if not a.offline:
         sh = open_sheet(a.sheet)
         for r in ws_records(sh, REC):
             if r.get("Status", "").strip().upper() == "RECEPTIONAT":
                 open_pl.add(rimp.norm_plate(r.get("RegistrationNumber", "")))
                 open_vin.add(rimp.norm_vin(r.get("VIN", "")))
+        for t in (HOTEL, TY, SRC):  # 'Inventar GY' doar CITIT
+            recs_ = ws_records(sh, t)
+            frames.append((t, pd.DataFrame(recs_).fillna("") if recs_ else pd.DataFrame()))
         for r in ws_records(sh, HOTEL):
             v = rimp.norm_vin(r.get("VIN", ""))
             if v:
                 vin2plate[v] = rimp.norm_plate(r.get("RegistrationNumber", ""))
+        notices = [dict(n, _row=k) for k, n in enumerate(ws_records(sh, NOT), 2)]
+    for ref in a.ref:
+        frames.append((os.path.basename(ref), read_ref(ref)))
     recs, warns, skipped = rimp.build_plan(raw, mapping, open_pl, a.fleet, open_vin, a.condition)
     for r in recs:
         if not r["RegistrationNumber"] and r["VIN"] in vin2plate:
             r["RegistrationNumber"] = vin2plate[r["VIN"]]
+    rep = rimp.enrich_plan(recs, rimp.ref_index(frames), notices) if frames else []
+    pd.set_option("display.width", 250)
+    pd.set_option("display.max_colwidth", 70)
     for line in rimp.plan_table(recs).to_string(index=False).splitlines():
         print(line)
+    if rep:
+        print("\n🔎 Comparație cu informațiile existente:")
+        print(pd.DataFrame(rep).to_string(index=False))
+        nf = sum(1 for r in recs if r["FleetName"])
+        print(f"Flotă găsită: {nf} / {len(recs)} (goală: {len(recs) - nf})")
+    has_fleet = {r["RegistrationNumber"] or r["VIN"] for r in recs if r["FleetName"]}
     for w in warns:
+        who, _, rest = w.partition(": ")
+        if who in has_fleet:
+            rest = "; ".join(x for x in rest.split("; ") if x != "fără flotă")
+            if not rest:
+                continue
+            w = f"{who}: {rest}"
         print("⚠️ ", w)
     if skipped:
         print(f"{skipped} rânduri ignorate (fără număr/VIN sau totaluri)")
+    hits = {k: rimp.match_notices(notices, r["RegistrationNumber"], r["VIN"], r.get("AWB", ""), a.date)
+            for k, r in enumerate(recs)} if notices else {}
+    print(f"Anunțuri curier potrivite: {sum(1 for v in hits.values() if v)}")
     if a.dry_run or a.offline:
         print(f"[dry-run] {len(recs)} recepții ar fi create. Nimic scris.")
         return 0
 
     now = datetime.now()
-    rec_rows, rty_rows, ist_rows, done = [], [], [], []
+    rec_rows, rty_rows, ist_rows, done, close, used = [], [], [], [], [], set()
     for k, r in enumerate(recs):
         plate, vin = r["RegistrationNumber"], r["VIN"]
         tyres = [t for t in r["tyres"] if t["MaterialDescription"]]
@@ -126,7 +188,16 @@ def main(argv=None):
                          "WaitingLocation": a.location, "Status": "RECEPTIONAT",
                          "CreatedAt": now.strftime("%Y-%m-%d %H:%M:%S"), "Operator": "import_receptie.py",
                          "UserName": r["UserName"], "UserPhone": r["UserPhone"], "ClientCompany": r["ClientCompany"],
-                         "VIN": vin, "Condition": r["Condition"]})
+                         "VIN": vin, "Condition": r["Condition"], "Note": a.note, "AWB": "", "NoticeId": ""})
+        free = [i for i in hits.get(k, []) if i not in used]
+        if free:
+            i = free[0]
+            used.add(i)
+            n = notices[i]
+            rec_rows[-1].update(NoticeId=n.get("NoticeId", ""), AWB=n.get("AWB", ""))
+            exp = n.get("ExpectedTyres", "")
+            disc = f"anunțate {exp} anv., recepționate {len(tyres)}" if exp and str(exp) != str(len(tyres)) else ""
+            close.append((i, rid, a.date, disc))
         for n, t in enumerate(tyres, 1):
             rty_rows.append({**t, "ReceptionId": rid, "TyreNo": str(n), "RegistrationNumber": plate})
         ist_rows.append({"Timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), "RegistrationNumber": plate or f"VIN {vin}",
@@ -137,7 +208,10 @@ def main(argv=None):
     append(sh, RTY, rty_rows)
     append(sh, REC, rec_rows)
     append(sh, IST, ist_rows)
-    print(f"✅ {len(done)} recepții create: {', '.join(done)}")
+    close_notices(sh, notices, close)
+    print(f"✅ {len(done)} recepții create ({len(rty_rows)} anvelope): {', '.join(done)}")
+    if close:
+        print(f"📬 {len(close)} anunțuri curier închise (RECEPTIONAT)")
     return 0
 
 
