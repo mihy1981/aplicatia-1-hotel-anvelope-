@@ -45,7 +45,7 @@ def test_flow():
     at = mk(tmp)
     src = f"{tmp}/Inventar GY.csv"
     src_md5 = md5(src)
-    assert len(at.tabs) == 8
+    assert len(at.tabs) == 11
     assert any("12 anvelope, 3 mașini" in i.value and "neatinsă" in i.value for i in at.info), [i.value for i in at.info]
     ty = csv(tmp, "Hotel_Anvelope")
     assert len(ty) == 12 and "CITY_2" in ty.columns and set(ty.CITY_2) == {"Buftea, Ilfov"}
@@ -120,7 +120,7 @@ def test_flow():
     # IEȘIRE
     at = mk(tmp)
     at.text_input(key="exit_plate").set_value("CJ99XYZ").run()
-    at.checkbox[0].check()
+    next(c for c in at.checkbox if c.label.startswith("Confirm că setul a fost predat")).check()
     click(at, "🚪 Înregistrează ieșirea")
     h = csv(tmp, "Hotel").set_index("RegistrationNumber")
     assert h.loc["CJ99XYZ"].Status == "RIDICAT" and h.loc["CJ99XYZ"].ExitDate
@@ -159,6 +159,95 @@ def _load_app(tmp):
     st.cache_data.clear()
     st.cache_resource.clear()
     return runpy.run_path(APP)
+
+
+def test_leasing_ui_render():
+    tmp = tempfile.mkdtemp()
+    os.environ["MADYT_DEMO"] = "1"
+    os.environ["MADYT_DEMO_DIR"] = tmp
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.run()
+    assert not at.exception, at.exception
+    m = {x.label: x.value for x in at.metric}
+    assert m["Recepții leasing deschise"] == "0" and m["Fișe GY: De introdus în GY"] == "0", m
+    for sec in ["📋 Lista recepțiilor", "✏️ Editează recepție", "📥 Import din Excel", "➕ Recepție nouă"]:
+        at.radio(key="ls_section").set_value(sec).run()
+        assert not at.exception, at.exception
+    at.text_input(key="lr_plate").set_value("b 1 x").run()
+    assert not at.exception
+
+
+def test_leasing_ui_swap_myway_fise():
+    tmp = tempfile.mkdtemp()
+    at = mk(tmp)
+    rc = csv(tmp, "Receptii")
+    rows = []
+    for rid, plate, d in (("RC1-B77TST", "B77TST", date.today().isoformat()), ("RC2-B88TST", "B88TST", "2026-01-05")):
+        r = {c: "" for c in rc.columns}
+        r.update({"ReceptionId": rid, "RegistrationNumber": plate, "FleetName": "HERTZ", "ReceptionDate": d, "Tyres": "4",
+                  "Season": "Winter", "Status": "RECEPTIONAT", "UserName": "Ana", "ClientCompany": "ACME"})
+        rows.append(r)
+    pd.DataFrame(rows, columns=rc.columns).to_csv(f"{tmp}/Receptii.csv", index=False)
+    rt = csv(tmp, "Receptii_Anvelope")
+    pd.DataFrame([{**{c: "" for c in rt.columns}, "ReceptionId": "RC1-B77TST", "TyreNo": str(k), "RegistrationNumber": "B77TST",
+                   "MaterialDescription": "205/55R16", "BRAND": "GOODYEAR", "ProductGroup": "Winter"} for k in range(1, 5)],
+                 columns=rt.columns).to_csv(f"{tmp}/Receptii_Anvelope.csv", index=False)
+    click(at, "🔄 Reîncarcă datele")
+    m = {x.label: x.value for x in at.metric}
+    assert m["Recepții leasing deschise"] == "2" and m["De introdus în My Way (>90 zile)"] == "1", m
+    # montaj set recepționat (mașina nu e în hotel)
+    at.text_input(key="swap_plate").set_value("b77tst").run()
+    assert any("Set trimis de leasing" in s.value for s in at.subheader)
+    assert not any("nu are niciun set" in w.value for w in at.warning)
+    at.text_input(key="ls_B77TST_brand").set_value("michelin")
+    at.text_input(key="ls_B77TST_desc").set_value("205/55R16 ALPIN")
+    at.text_input(key="ls_B77TST_tread").set_value("6")
+    click(at, "✅ Montat setul recepționat")
+    assert not errs(at), errs(at)
+    h = csv(tmp, "Hotel").set_index("RegistrationNumber").loc["B77TST"]
+    assert h.Status == "DEPOZITAT" and h.UserName == "Ana" and h.ClientCompany == "ACME"
+    assert csv(tmp, "Receptii").set_index("ReceptionId").loc["RC1-B77TST"].Status == "SCHIMBAT"
+    # My Way pentru setul vechi
+    at.selectbox(key="mw_one").set_value("RC2-B88TST").run()
+    click(at, "✅ Introdus în My Way")
+    assert csv(tmp, "Receptii").set_index("ReceptionId").loc["RC2-B88TST"].Status == "EXTRA_DEPOZITARE"
+    f = csv(tmp, "Fise_GY")
+    assert len(f) == 2 and set(f.Status) == {"DE_INTRODUS_GY"}
+    # fișe GY: toate -> TRIMIS
+    next(c for c in at.checkbox if c.label.startswith("Aplică pe toate")).check()
+    click(at, "➡️ Actualizează statusul")
+    assert not errs(at), errs(at)
+    assert set(csv(tmp, "Fise_GY").Status) == {"TRIMIS_GY"}
+    m = {x.label: x.value for x in at.metric}
+    assert m["Fișe GY: Trimisă în GY"] == "2" and m["Recepții leasing deschise"] == "0", m
+
+
+def test_vin_ui_card():
+    tmp = tempfile.mkdtemp()
+    at = mk(tmp)
+    rc = csv(tmp, "Receptii")
+    r = {c: "" for c in rc.columns}
+    r.update({"ReceptionId": "RC1-VIN", "RegistrationNumber": "", "VIN": "WVWZZZ1KZAW654321", "Condition": "FOLOSITE",
+              "FleetName": "ARVAL", "ReceptionDate": "2026-10-20", "Tyres": "4", "Season": "Winter",
+              "Status": "RECEPTIONAT", "UserName": "Dan"})
+    pd.DataFrame([r], columns=rc.columns).to_csv(f"{tmp}/Receptii.csv", index=False)
+    click(at, "🔄 Reîncarcă datele")
+    at.text_input(key="swap_plate").set_value("aw654321").run()
+    assert not errs(at), errs(at)
+    txt = " ".join(x.value for x in list(at.success) + list(at.info))
+    assert "Are anvelope în hotel: NU" in txt and "Anvelope recepționate: DA" in txt and "FOLOSITE" in txt, txt
+    at.text_input(key="swap_plate").set_value("").run()
+    # căutare după număr existent în hotel (demo): DA în hotel, NU recepționate
+    at.text_input(key="search_q").set_value("B101DEM").run()
+    txt = " ".join(x.value for x in list(at.success) + list(at.info))
+    assert "Are anvelope în hotel: DA" in txt and "Anvelope recepționate: NU" in txt, txt
+    # legare VIN -> număr din fișă
+    at.text_input(key="swap_plate").set_value("WVWZZZ1KZAW654321").run()
+    fi = next(t for t in at.text_input if t.label.startswith("Număr auto pentru VIN"))
+    fi.set_value("b 99 vin")
+    click(at, "🔗 Leagă")
+    assert not errs(at), errs(at)
+    assert csv(tmp, "Receptii").RegistrationNumber[0] == "B99VIN"
 
 
 def test_zz_functions_import_export():
