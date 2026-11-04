@@ -30,6 +30,32 @@ import streamlit as st
 st.set_page_config(page_title="MADYT – Hotel Anvelope", page_icon="🛞", layout="wide",
                    initial_sidebar_state="collapsed")
 
+# Oprește traducerea automată a browserului (Chrome „Traduce pagina”), care strica textele
+# (ex: „B10PRG” -> „B10PRONG”, „Leasing HERTZ” -> „Închirierea HERTZ”). Pagina e deja în română.
+_NO_TRANSLATE_JS = """<script>
+(function () {
+  try {
+    var d = window.parent.document;
+    var h = d.documentElement;
+    h.setAttribute("lang", "ro");
+    h.setAttribute("translate", "no");
+    h.classList.add("notranslate");
+    if (d.body) { d.body.setAttribute("translate", "no"); d.body.classList.add("notranslate"); }
+    if (!d.querySelector('meta[name="google"][content="notranslate"]')) {
+      var m = d.createElement("meta"); m.name = "google"; m.content = "notranslate"; d.head.appendChild(m);
+    }
+    if (!d.querySelector('meta[http-equiv="Content-Language"]')) {
+      var c = d.createElement("meta"); c.httpEquiv = "Content-Language"; c.content = "ro"; d.head.appendChild(c);
+    }
+  } catch (e) { /* fără acces la pagina părinte: nu blocăm aplicația */ }
+})();
+</script>"""
+try:
+    import streamlit.components.v1 as _components
+    _components.html(_NO_TRANSLATE_JS, height=0)
+except Exception:  # noqa: BLE001
+    pass
+
 # ---------------------------------------------------------------------------
 # Constante
 # ---------------------------------------------------------------------------
@@ -2844,8 +2870,11 @@ def car_status_card(query, key="card"):
     ppl = {k: (h[k] if h is not None and h[k] else "") or next((x for x in recs[k][::-1] if x), "") for k in CAR_PEOPLE} \
         if len(recs) or h is not None else {}
     with st.container(border=True):
-        st.markdown(f"### 🚗 {plate or '(fără număr auto)'}" + (f"  ·  VIN {', '.join(vins)}" if vins else ""))
-        st.markdown(f"**Flotă:** {fleet or '-'}" + (f"  ·  {people_line(ppl)}" if ppl and people_line(ppl) else ""))
+        st.markdown(f'### 🚗 <span translate="no" class="notranslate">{plate or "(fără număr auto)"}</span>'
+                    + (f'  ·  <span translate="no" class="notranslate">VIN {", ".join(vins)}</span>' if vins else ""),
+                    unsafe_allow_html=True)
+        st.markdown(f'**Flotă:** <span translate="no" class="notranslate">{fleet or "-"}</span>'
+                    + (f"  ·  {people_line(ppl)}" if ppl and people_line(ppl) else ""), unsafe_allow_html=True)
         cls_c = car_class(plate, CLS, fleet) if plate else {"BillingType": ex.BT_NONE}
         bt_badge(cls_c)
         c1, c2 = st.columns(2)
@@ -2907,7 +2936,7 @@ def bt_badge(c):
         parts.append(f"Flotă leasing: {c['LeasingCompany']}")
     if c.get("DriverName") or c.get("DriverPhone"):
         parts.append(f"Șofer: {c.get('DriverName') or '-'} {c.get('DriverPhone') or ''}".strip())
-    st.markdown(f'<div style="background:{ex.BT_COLOR.get(bt, "#777")};color:#fff;border-radius:10px;'
+    st.markdown(f'<div translate="no" class="notranslate" style="background:{ex.BT_COLOR.get(bt, "#777")};color:#fff;border-radius:10px;'
                 f'padding:.45em .8em;margin:.2em 0 .5em 0;font-size:1.05rem">🏷️ ' + " · ".join(parts) + "</div>",
                 unsafe_allow_html=True)
     if bt == ex.BT_NONE:
@@ -3083,7 +3112,8 @@ with tabs[0]:
             pos_card(h["PositionCode"], legacy=h["LegacyLocation"])
             set_header(h, rows)
             car_people_editor(h, f"swap_{np_}")
-            tyre_table(rows)
+            if not len(rows):  # dacă are anvelope, tabelul e deja în fișa de sus („🛞 Ce are acum în hotel”)
+                tyre_table(rows)
 
             assign = ""
             if not h["PositionCode"]:
@@ -3147,10 +3177,13 @@ with tabs[1]:
         if nq:
             mask |= res["RegistrationNumber"].map(norm_plate).str.contains(nq, regex=False)
         res = res[mask]
-    if q:
-        car_status_card(q, "search")
-    st.caption(f"{len(res)} seturi în hotel")
-    show_df(res)
+    card = car_status_card(q, "search") if q else {"by": ""}
+    if card.get("by"):  # fișa mașinii arată deja anvelopele din hotel -> nu repetăm tabelul deschis
+        with st.expander(f"📋 Rezultate căutare: {len(res)} seturi în hotel (toate coloanele)"):
+            show_df(res)
+    else:
+        st.caption(f"{len(res)} seturi în hotel")
+        show_df(res)
     rid = hotel_df[hotel_df["Status"] == ST_RID]
     if len(rid):
         with st.expander(f"Seturi ridicate ({len(rid)})"):
