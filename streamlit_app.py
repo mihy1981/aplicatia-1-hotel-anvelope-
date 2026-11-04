@@ -34,8 +34,7 @@ st.set_page_config(page_title="MADYT – Hotel Anvelope", page_icon="🛞", layo
 # (ex: „B10PRG” -> „B10PRONG”, „Leasing HERTZ” -> „Închirierea HERTZ”). Pagina e deja în română.
 _NO_TRANSLATE_JS = """<script>
 (function () {
-  try {
-    var d = window.parent.document;
+  function protect(d) {
     var h = d.documentElement;
     h.setAttribute("lang", "ro");
     h.setAttribute("translate", "no");
@@ -47,7 +46,11 @@ _NO_TRANSLATE_JS = """<script>
     if (!d.querySelector('meta[http-equiv="Content-Language"]')) {
       var c = d.createElement("meta"); c.httpEquiv = "Content-Language"; c.content = "ro"; d.head.appendChild(c);
     }
-  } catch (e) { /* fără acces la pagina părinte: nu blocăm aplicația */ }
+  }
+  // pagina aplicației și (pe Streamlit Cloud) pagina-cadru de deasupra ei
+  [window.parent, window.top].forEach(function (w) {
+    try { protect(w.document); } catch (e) { /* fără acces: nu blocăm aplicația */ }
+  });
 })();
 </script>"""
 try:
