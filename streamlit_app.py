@@ -2072,6 +2072,9 @@ def car_status_card(query, key="card"):
             c2.success("**Anvelope recepționate: DA**  \n" + "  \n".join(lines))
         else:
             c2.info("**Anvelope recepționate: NU**")
+        if h is not None and h["Status"] in ST_IN and len(rows):
+            st.markdown("**🛞 Ce are acum în hotel**")
+            tyre_table(rows)
         closed = recs[recs["Status"].str.upper() != RC_OPEN]
         if len(closed):
             st.caption("Recepții închise: " + "; ".join(f"{r['ReceptionDate']} {r['Condition'] or ''} → {r['Status']}"
@@ -2277,9 +2280,6 @@ with tabs[1]:
         car_status_card(q, "search")
     st.caption(f"{len(res)} seturi în hotel")
     show_df(res)
-    if q and len(res) == 1:
-        st.markdown("**Anvelopele setului**")
-        tyre_table(tyres_of(ty_df, res.iloc[0]["RegistrationNumber"]))
     rid = hotel_df[hotel_df["Status"] == ST_RID]
     if len(rid):
         with st.expander(f"Seturi ridicate ({len(rid)})"):
