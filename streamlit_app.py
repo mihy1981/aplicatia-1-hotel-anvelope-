@@ -845,8 +845,8 @@ def do_swap(plate, tyres, assign_code="", user_note="", mv=None):
     x = _mv_extra(mv)
     x.setdefault("VIN", hotel.at[i, "VIN"])
     pl = hotel.at[i, "RegistrationNumber"]
-    _hook(record_moves, [mv_row(pl, ex.MV_MOUNT, len(old), Tyres=describe(old), **dict(x, MountSource=x.get("MountSource") or ex.MS_HOTEL)),
-                         mv_row(pl, ex.MV_OUT_CAR, len(new), Tyres=describe(new), **{k: v for k, v in x.items() if k != "MountSource"})])
+    _hook(lambda: record_moves([mv_row(pl, ex.MV_MOUNT, len(old), Tyres=describe(old), **dict(x, MountSource=x.get("MountSource") or ex.MS_HOTEL)),
+                         mv_row(pl, ex.MV_OUT_CAR, len(new), Tyres=describe(new), **{k: v for k, v in x.items() if k != "MountSource"})]))
     _hook(lambda: do_add_bills([swap_bill_line(pl, f"Montat: {describe(old)}", mv)]))
     return code, len(worn)
 
@@ -885,7 +885,7 @@ def do_reception(meta, tyres, code, user_note="", mv=None):
     save(hotel=hotel, ty=ty, logs=[log_row("RECEPTIE", plate, det, code, user_note)])
     x = _mv_extra(mv)
     x.setdefault("VIN", rec.get("VIN", ""))
-    _hook(record_moves, [mv_row(plate, ex.MV_OUT_CAR, len(new), Tyres=describe(new), **x)])
+    _hook(lambda: record_moves([mv_row(plate, ex.MV_OUT_CAR, len(new), Tyres=describe(new), **x)]))
 
 
 def do_exit(plate, note="", leasing_ref="", mv=None):
@@ -907,7 +907,7 @@ def do_exit(plate, note="", leasing_ref="", mv=None):
                        + (f" Ref. email 4Fleet: {leasing_ref}" if leasing_ref else ""), code, note)])
     x = dict({"Destination": "ridicat de client", "Reference": leasing_ref, "Note": note, "VIN": hotel.at[i, "VIN"]},
              **_mv_extra(mv))
-    _hook(record_moves, [mv_row(hotel.at[i, "RegistrationNumber"], ex.MV_LEFT, len(old), Tyres=describe(old), **x)])
+    _hook(lambda: record_moves([mv_row(hotel.at[i, "RegistrationNumber"], ex.MV_LEFT, len(old), Tyres=describe(old), **x)]))
     return code
 
 
@@ -1103,8 +1103,8 @@ def do_leasing_reception(meta, tyres, allow_duplicate=False, source="", log=True
     x.setdefault("FromWho", row["FleetName"])
     x.setdefault("AWB", row["AWB"])
     x.setdefault("VIN", vin)
-    _hook(record_moves, [mv_row(plate or vin, ex.MV_IN, len(tyres), Tyres=describe_rtyres(pd.DataFrame(tyres)),
-                                Reference=rid, **x)])
+    x["Reference"] = x.get("Reference") or rid
+    _hook(lambda: record_moves([mv_row(plate or vin, ex.MV_IN, len(tyres), Tyres=describe_rtyres(pd.DataFrame(tyres)), **x)]))
     clear_cache()
     return rid
 
@@ -1155,9 +1155,9 @@ def do_bulk_leasing_reception(recs, rdate, waiting_loc="", skip_open=True, sourc
         d = dict(zip(REC_COLS, r))
         if d["RegistrationNumber"] and (any(d[k] for k in CAR_PEOPLE) or d["VIN"]):
             update_car_people(d["RegistrationNumber"], d)
-    _hook(record_moves, [mv_row(d["RegistrationNumber"] or d["VIN"], ex.MV_IN, d["Tyres"], Date=d["ReceptionDate"],
+    _hook(lambda: record_moves([mv_row(d["RegistrationNumber"] or d["VIN"], ex.MV_IN, d["Tyres"], Date=d["ReceptionDate"],
                                 FromWho=d["FleetName"], AWB=d["AWB"], VIN=d["VIN"], Reference=d["ReceptionId"],
-                                Origin="APLICATIE", Note=f"import {source}".strip()) for d in rec_dicts])
+                                Origin="APLICATIE", Note=f"import {source}".strip()) for d in rec_dicts]))
     clear_cache()
     return created, skipped
 
@@ -1300,10 +1300,12 @@ def do_leasing_swap(rec_id, tyres, assign_code="", user_note="", replace_existin
     clear_cache()
     x = _mv_extra(mv)
     x.setdefault("VIN", hotel.at[i, "VIN"])
-    _hook(record_moves, [mv_row(plate, ex.MV_MOUNT, len(mounted), Tyres=describe_rtyres(mounted), Reference=rec_id,
-                                **dict(x, MountSource=x.get("MountSource") or ex.MS_NEW, FromWho=x.get("FromWho") or r["FleetName"])),
-                         mv_row(plate, ex.MV_OUT_CAR, len(new), Tyres=describe(new),
-                                **{k: v for k, v in x.items() if k not in ("MountSource", "FromWho", "Reference")})])
+    _hook(lambda: record_moves([
+        mv_row(plate, ex.MV_MOUNT, len(mounted), Tyres=describe_rtyres(mounted),
+               **dict(x, Reference=x.get("Reference") or rec_id, MountSource=x.get("MountSource") or ex.MS_NEW,
+                      FromWho=x.get("FromWho") or r["FleetName"])),
+        mv_row(plate, ex.MV_OUT_CAR, len(new), Tyres=describe(new),
+               **{k: v for k, v in x.items() if k not in ("MountSource", "FromWho", "Reference")})]))
     return code, len(worn)
 
 
@@ -3989,9 +3991,9 @@ with tabs[12]:
             try:
                 n_q = do_gy_decision([pq], dec, dt_q, bill_q, nt_q.strip())
                 if n_q and dec == "RECICLAM":
-                    _hook(record_moves, [mv_row(pq, ex.MV_SCRAP, len(tyres_of(ty_df, pq)) or 4, Date=dt_q.isoformat(),
+                    _hook(lambda: record_moves([mv_row(pq, ex.MV_SCRAP, len(tyres_of(ty_df, pq)) or 4, Date=dt_q.isoformat(),
                                                 Reference=nt_q.strip(), RequestedBy="GY Fleet / 4Fleet", Origin="EMAIL",
-                                                VIN=hq["VIN"], ApprovedBy=st.session_state.get("operator", "") or "-", ApprovedDate=today_s())])
+                                                VIN=hq["VIN"], ApprovedBy=st.session_state.get("operator", "") or "-", ApprovedDate=today_s())]))
                 if dec == "PASTRAM":
                     flash(f"✅ {pq}: DEPOZITAT; fișa «{FT_STORE6}» ({dt_q} → {add_months(dt_q)}) este în «De introdus în GY».")
                 else:
