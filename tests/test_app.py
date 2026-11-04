@@ -45,7 +45,7 @@ def test_flow():
     at = mk(tmp)
     src = f"{tmp}/Inventar GY.csv"
     src_md5 = md5(src)
-    assert len(at.tabs) == 13
+    assert len(at.tabs) == 18
     assert any("12 anvelope, 3 mașini" in i.value and "neatinsă" in i.value for i in at.info), [i.value for i in at.info]
     ty = csv(tmp, "Hotel_Anvelope")
     assert len(ty) == 12 and "CITY_2" in ty.columns and set(ty.CITY_2) == {"Buftea, Ilfov"}
@@ -122,7 +122,17 @@ def test_flow():
     at.text_input(key="exit_plate").set_value("CJ99XYZ").run()
     next(c for c in at.checkbox if c.label.startswith("Confirm că setul a fost predat")).check()
     click(at, "🚪 Înregistrează ieșirea")
+    # flotă de leasing: setul rămâne în hotel fără referința emailului 4Fleet
+    assert any("LEASING" in e for e in errs(at)), errs(at)
+    assert csv(tmp, "Hotel").set_index("RegistrationNumber").loc["CJ99XYZ"].Status == "DEPOZITAT"
+    at = mk(tmp)
+    at.text_input(key="exit_plate").set_value("CJ99XYZ").run()
+    next(t for t in at.text_input if t.label.startswith("Referință email 4Fleet")).set_value("email 4Fleet 123")
+    next(c for c in at.checkbox if c.label.startswith("Confirm că setul a fost predat")).check()
+    click(at, "🚪 Înregistrează ieșirea")
     h = csv(tmp, "Hotel").set_index("RegistrationNumber")
+    mv = csv(tmp, "Miscari")
+    assert ((mv.RegistrationNumber == "CJ99XYZ") & (mv.Type == "PLECAT")).sum() == 1
     assert h.loc["CJ99XYZ"].Status == "RIDICAT" and h.loc["CJ99XYZ"].ExitDate
     assert (csv(tmp, "Hotel_Anvelope").RegistrationNumber == "CJ99XYZ").sum() == 0
     assert csv(tmp, "Pozitii").set_index("PositionCode").loc["R1-N1-P2"].OccupiedPlate == ""

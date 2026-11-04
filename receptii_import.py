@@ -12,7 +12,7 @@ import pandas as pd
 
 REC_COLS = ["ReceptionId", "RegistrationNumber", "FleetName", "ReceptionDate", "Tyres", "Season", "WaitingLocation",
             "Note", "Status", "SwapDate", "MyWayDate", "CreatedAt", "Operator", "UserName", "UserPhone", "ClientCompany",
-            "VIN", "Condition", "AWB", "NoticeId"]
+            "VIN", "Condition", "AWB", "NoticeId", "LeftDate", "LeftAWB", "LeftTo"]
 RTY_COLS = ["ReceptionId", "TyreNo", "RegistrationNumber", "MaterialDescription", "BRAND", "TyreModel",
             "ProductGroup", "DOT", "TreadDepth", "Axle", "Note", "MaterialCode"]
 CONDITIONS = ["NOI", "FOLOSITE"]
