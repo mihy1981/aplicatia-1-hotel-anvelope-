@@ -997,6 +997,20 @@ def new_id(prefix, plate=""):
     return f"{prefix}{t.strftime('%Y%m%d%H%M%S%f')[:-3]}-{norm_plate(plate)}"
 
 
+RECEPTION_SOURCES = ["GY Fleet (relocare Interspace)", "GY Fleet curier", "Furnizor", "Client", "Import fișier", "Altul"]
+
+
+def reception_line(r):
+    """Linia unică de proveniență afișată oriunde apare o recepție."""
+    r = r.to_dict() if hasattr(r, "to_dict") else r
+    source = str(r.get("Source", "")).strip() or "sursă necompletată"
+    awb = str(r.get("AWB", "")).strip()
+    awb_text = f"AWB {awb}" if awb else ("AWB lipsă" if source.startswith("GY Fleet") else "")
+    d = parse_date(r.get("ReceptionDate", ""))
+    d_text = d.strftime("%d.%m.%Y") if pd.notna(d) else "dată necompletată"
+    return " · ".join(x for x in [f"Recepționate {source}", awb_text, d_text] if x)
+
+
 def rec_age(rec_row):
     d = parse_date(rec_row.get("ReceptionDate", ""))
     return (pd.Timestamp(date.today()) - d).days if pd.notna(d) else None
@@ -1114,6 +1128,7 @@ def do_leasing_reception(meta, tyres, allow_duplicate=False, source="", log=True
     row["VIN"] = vin
     row["Condition"] = rimp.norm_condition(meta.get("Condition", ""), "NOI")
     row["AWB"] = str(meta.get("AWB", "")).strip()
+    row["Source"] = str(meta.get("Source", "")).strip()
     nmatch = plan_notice_close([row], force={rid: meta.get("NoticeId", "")} if meta.get("NoticeId") else None,
                                discrepancy={rid: meta.get("Discrepancy", "")} if meta.get("Discrepancy") else None)
     be = backend()
@@ -1129,7 +1144,7 @@ def do_leasing_reception(meta, tyres, allow_duplicate=False, source="", log=True
         update_car_people(plate, row)
     x = _mv_extra(mv)
     x.setdefault("Date", row["ReceptionDate"])
-    x.setdefault("FromWho", row["FleetName"])
+    x.setdefault("FromWho", row.get("Source") or row["FleetName"])
     x.setdefault("AWB", row["AWB"])
     x.setdefault("VIN", vin)
     x["Reference"] = x.get("Reference") or rid
@@ -1165,6 +1180,7 @@ def do_bulk_leasing_reception(recs, rdate, waiting_loc="", skip_open=True, sourc
         row["VIN"] = vin
         row["Condition"] = rimp.norm_condition(r.get("Condition", ""), "NOI")
         row["AWB"] = str(r.get("AWB", "")).strip()
+        row["Source"] = str(r.get("Source") or "Import fișier").strip()
         row["Note"] = str(r.get("Note", "")).strip()
         rec_dicts.append(row)
         rty_rows += _rty_rows(rid, plate, tyres)
@@ -1185,7 +1201,7 @@ def do_bulk_leasing_reception(recs, rdate, waiting_loc="", skip_open=True, sourc
         if d["RegistrationNumber"] and (any(d[k] for k in CAR_PEOPLE) or d["VIN"]):
             update_car_people(d["RegistrationNumber"], d)
     _hook(lambda: record_moves([mv_row(d["RegistrationNumber"] or d["VIN"], ex.MV_IN, d["Tyres"], Date=d["ReceptionDate"],
-                                FromWho=d["FleetName"], AWB=d["AWB"], VIN=d["VIN"], Reference=d["ReceptionId"],
+                                FromWho=d.get("Source") or d["FleetName"], AWB=d["AWB"], VIN=d["VIN"], Reference=d["ReceptionId"],
                                 Origin="APLICATIE", Note=f"import {source}".strip()) for d in rec_dicts]))
     clear_cache()
     return created, skipped
@@ -1204,7 +1220,7 @@ def do_edit_reception(rec_id, header, tyres):
     if err:
         raise BackendError(err)
     changes = []
-    for k in ("FleetName", "ReceptionDate", "WaitingLocation", "Note", "VIN", "Condition") + tuple(CAR_PEOPLE):
+    for k in ("FleetName", "ReceptionDate", "WaitingLocation", "Note", "VIN", "Condition", "AWB", "Source") + tuple(CAR_PEOPLE):
         if k in header:
             v = str(header[k]).strip()
             if k == "VIN":
@@ -2805,7 +2821,7 @@ def leasing_swap_panel(np_, orec, i):
     r["ReceptionId"] = rid
     age = rec_age(r)
     st.markdown(f"**Flotă:** {r['FleetName'] or '-'}  ·  {people_line(r) or 'Utilizator / firmă client: -'}  \n"
-                f"**Recepționat:** {r['ReceptionDate'] or '-'}" + (f" ({age} zile)" if age is not None else "")
+                f"**{reception_line(r)}**" + (f" ({age} zile)" if age is not None else "")
                 + f"  ·  **Locație așteptare:** {r['WaitingLocation'] or '-'}" + (f"  \n**Notă:** {r['Note']}" if r["Note"] else ""))
     if age is not None and age > RC_DAYS:
         st.warning(f"Setul așteaptă de {age} zile (peste {RC_DAYS}) – la sfârșit de sezon intră în My Way ca EXTRA DEPOZITARE.")
@@ -2889,7 +2905,7 @@ def car_status_card(query, key="card"):
         else:
             c1.info("**Are anvelope în hotel: NU**" + (f"  \n(ridicat pe {h['ExitDate'] or '-'})" if h is not None else ""))
         if len(op):
-            lines = [f"{r['Condition'] or 'NOI'} · {r['ReceptionDate'] or '-'} · {r['Tyres']} anv."
+            lines = [f"{r['Condition'] or 'NOI'} · {r['Tyres']} anv. · {reception_line(r)}"
                      + (f" · {r['WaitingLocation']}" if r["WaitingLocation"] else "") for _, r in op.iterrows()]
             c2.success("**Anvelope recepționate: DA**  \n" + "  \n".join(lines))
         else:
@@ -2900,12 +2916,11 @@ def car_status_card(query, key="card"):
         for _, r in op.iterrows():
             rt_ = rec_tyres(rty_df, r["ReceptionId"])
             if len(rt_):
-                st.markdown(f"**📥 Anvelope recepționate (nemontate) – {r['ReceptionDate'] or '-'}"
-                            + (f" · AWB {r['AWB']}" if r["AWB"] else "") + "**")
+                st.markdown(f"**📥 Anvelope recepționate (nemontate)**  \n**{reception_line(r)}**")
                 rtyres_table(rt_)
         closed = recs[recs["Status"].str.upper() != RC_OPEN]
         if len(closed):
-            st.caption("Recepții închise: " + "; ".join(f"{r['ReceptionDate']} {r['Condition'] or ''} → {r['Status']}"
+            st.caption("Recepții închise: " + "; ".join(f"{reception_line(r)} · {r['Condition'] or ''} → {r['Status']}"
                                                          for _, r in closed.iterrows()))
     nolink = op[op["RegistrationNumber"].map(norm_plate) == ""]
     if len(nolink):
@@ -3306,6 +3321,10 @@ with tabs[3]:
             rdate = c1.date_input("Data recepției", value=date.today(), format="DD.MM.YYYY")
             cond = c2.radio("Anvelope", rimp.CONDITIONS, horizontal=True)
             wloc = c3.text_input("Locație de așteptare", placeholder="ex: container 2, palet A")
+            c1, c2 = st.columns(2)
+            src_l = c1.selectbox("De unde au fost recepționate *", RECEPTION_SOURCES)
+            awb_l = c2.text_input("Număr AWB (dacă există)", placeholder="ex: 7000175343607")
+            src_other_l = c1.text_input("Precizează sursa / furnizorul", placeholder="obligatoriu pentru Furnizor sau Altul") if src_l in ("Furnizor", "Altul") else ""
             lnote = st.text_input("Notă")
             c1, c2, c3 = st.columns(3)
             pv_ = (lambda k: hrow[k] if hrow is not None else "")
@@ -3320,13 +3339,17 @@ with tabs[3]:
         if ok_l:
             if (not lpn and not lvn) or not fleet_l:
                 st.error("Completează numărul auto sau VIN-ul, și flota.")
+            elif src_l in ("Furnizor", "Altul") and not src_other_l.strip():
+                st.error("Precizează numele furnizorului sau sursa recepției.")
             else:
                 try:
                     tyres = collect_l(fill)
                     rid = do_leasing_reception({"RegistrationNumber": lpn, "VIN": lv, "Condition": cond,
                                                 "FleetName": fleet_l, "ReceptionDate": rdate,
                                                 "WaitingLocation": wloc, "Note": lnote, "UserName": uname,
-                                                "UserPhone": uphone, "ClientCompany": ccomp}, tyres, bool(force))
+                                                "UserPhone": uphone, "ClientCompany": ccomp,
+                                                "Source": (f"{src_l}: {src_other_l.strip()}" if src_other_l.strip() else src_l),
+                                                "AWB": awb_l}, tyres, bool(force))
                     flash(f"✅ Recepție leasing salvată pentru {lpn or 'VIN ' + lvn} ({len(clean_rtyres(tyres))} anvelope) – {rid}.")
                     st.rerun()
                 except BackendError as e:
@@ -3346,15 +3369,16 @@ with tabs[3]:
             v = v[v["FleetName"].isin(fl_f)]
         if q_l:
             v = v[v.astype(str).apply(lambda c: c.str.upper().str.contains(q_l, regex=False)).any(axis=1)]
-        v = v.assign(Zile=v.apply(lambda r: rec_age(r), axis=1)).sort_values("ReceptionDate")
+        v = v.assign(Zile=v.apply(lambda r: rec_age(r), axis=1), Provenienta=v.apply(reception_line, axis=1)).sort_values("ReceptionDate")
         st.caption(f"{len(v)} recepții")
         show_df(v[["RegistrationNumber", "VIN", "Condition", "FleetName", "UserName", "UserPhone", "ClientCompany",
-                   "ReceptionDate", "Zile", "Tyres", "Season", "WaitingLocation", "Status", "SwapDate", "MyWayDate", "Note", "ReceptionId"]])
+                   "ReceptionDate", "Provenienta", "Zile", "Tyres", "Season", "WaitingLocation", "Status", "SwapDate", "MyWayDate", "Note", "ReceptionId"]])
         if len(v):
             st.download_button("⬇️ Descarcă lista (CSV)", v.to_csv(index=False).encode("utf-8-sig"), "receptii_leasing.csv",
                                "text/csv")
             sel = st.selectbox("Vezi anvelopele recepției", v["ReceptionId"].tolist(), key="lr_list_sel",
                                format_func=lambda x: f"{v.set_index('ReceptionId').at[x, 'RegistrationNumber'] or 'VIN ' + v.set_index('ReceptionId').at[x, 'VIN']} – {x}")
+            st.markdown(f"**{reception_line(v[v['ReceptionId'] == sel].iloc[0])}**")
             rtyres_table(rec_tyres(rty_df, sel))
 
     elif lt.startswith("✏️"):
@@ -3379,6 +3403,9 @@ with tabs[3]:
                     e_fl = c1.text_input("Flotă", value=r_e["FleetName"])
                     e_dt = c2.text_input("Data recepției (AAAA-LL-ZZ)", value=r_e["ReceptionDate"])
                     e_wl = c3.text_input("Locație de așteptare", value=r_e["WaitingLocation"])
+                    c1, c2 = st.columns(2)
+                    e_src = c1.selectbox("De unde au fost recepționate", [r_e["Source"]] + [x for x in RECEPTION_SOURCES if x != r_e["Source"]])
+                    e_awb = c2.text_input("Număr AWB", value=r_e["AWB"])
                     c1, c2, c3 = st.columns(3)
                     e_un = c1.text_input("Utilizator (nume)", value=r_e["UserName"])
                     e_up = c2.text_input("Telefon utilizator", value=r_e["UserPhone"])
@@ -3403,7 +3430,8 @@ with tabs[3]:
                         n_ch = do_edit_reception(rid_e, {"VIN": e_vn, "Condition": e_cd,
                                                          "FleetName": e_fl, "ReceptionDate": e_dt.strip(),
                                                          "WaitingLocation": e_wl, "Note": e_nt, "UserName": e_un,
-                                                         "UserPhone": e_up, "ClientCompany": e_cc}, collect_e())
+                                                         "UserPhone": e_up, "ClientCompany": e_cc,
+                                                         "Source": e_src, "AWB": e_awb}, collect_e())
                         flash(f"✅ {n_ch} modificări salvate și trecute în Istoric." if n_ch else "Nicio modificare.",
                               "success" if n_ch else "info")
                         st.rerun()
@@ -3918,6 +3946,7 @@ with tabs[11]:
                     rid_n = do_leasing_reception(
                         {"RegistrationNumber": pl_c, "VIN": vin_c, "FleetName": fl_c, "ReceptionDate": dt_c,
                          "WaitingLocation": wl_c, "Condition": cd_c, "AWB": n_["AWB"], "NoticeId": nid,
+                         "Source": "GY Fleet (relocare Interspace)",
                          "Discrepancy": disc_c.strip(),
                          "Note": f"Sosit prin curier AWB {n_['AWB']}" + (f" · DISCREPANȚĂ: {disc_c.strip()}" if disc_c.strip() else "")},
                         collect_n(), allow_duplicate=True, source=f"anunț curier {n_['AWB']}")
